@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FounderMap — Find Your City</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:#0a0e1a; --panel:#111827; --panel2:#1a2235; --border:#1e2d45;
+      --teal:#00d4aa; --teal-dim:#00a888; --blue:#2a2d31; --orange:#f59e0b;
+      --white:#f0f4ff; --muted:#6b7fa3;
+      --font-head:'Syne',sans-serif; --font-mono:'Space Mono',monospace;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--bg);color:var(--white);font-family:var(--font-mono);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+    header{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:52px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;z-index:1000;}
+    .logo{font-family:var(--font-head);font-size:20px;font-weight:800;color:var(--teal);}
+    .logo span{color:var(--white);}
+    .status-badge{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);background:var(--panel2);border:1px solid var(--border);padding:5px 12px;border-radius:20px;}
+    .status-dot{width:7px;height:7px;border-radius:50%;background:var(--orange);animation:pulse 2s infinite;}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+    .main{display:flex;flex:1;overflow:hidden;}
+    .sidebar{width:340px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;z-index:100;}
+    .sidebar::-webkit-scrollbar{width:4px;}
+    .sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+    .sidebar-section{padding:20px;border-bottom:1px solid var(--border);}
+    .section-label{font-size:10px;font-weight:700;letter-spacing:2px;color:var(--teal);margin-bottom:14px;font-family:var(--font-head);}
+    label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;}
+    select,input[type="range"]{width:100%;background:var(--panel2);border:1px solid var(--border);color:var(--white);font-family:var(--font-mono);font-size:13px;padding:9px 12px;border-radius:6px;margin-bottom:12px;outline:none;transition:border-color 0.2s;appearance:none;}
+    select:focus{border-color:var(--teal);}
+    select option{background:var(--panel2);}
+    input[type="range"]{padding:0;height:4px;cursor:pointer;accent-color:var(--teal);margin-bottom:4px;}
+    .range-row{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:12px;}
+    .pill-group{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+    .pill{padding:5px 11px;border-radius:20px;border:1px solid var(--border);font-size:11px;cursor:pointer;transition:all 0.15s;user-select:none;color:var(--muted);}
+    .pill.active{border-color:var(--teal);background:rgba(0,212,170,0.12);color:var(--teal);}
+    .run-btn{width:100%;padding:12px;background:var(--teal);color:#000;font-family:var(--font-head);font-size:15px;font-weight:700;border:none;border-radius:8px;cursor:pointer;transition:background 0.2s,transform 0.1s;margin-top:4px;}
+    .run-btn:hover{background:var(--teal-dim);}
+    .run-btn:active{transform:scale(0.98);}
+    .run-btn:disabled{background:var(--muted);cursor:not-allowed;transform:none;}
+    .result-card{padding:16px 20px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;position:relative;}
+    .result-card:hover{background:var(--panel2);}
+    .result-card.active{background:rgba(0,212,170,0.07);border-left:3px solid var(--teal);}
+    .result-rank{position:absolute;top:14px;right:16px;font-family:var(--font-head);font-size:22px;font-weight:800;color:var(--border);}
+    .result-card.active .result-rank{color:var(--teal);}
+    .result-city{font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--white);margin-bottom:2px;}
+    .result-state{font-size:11px;color:var(--muted);margin-bottom:8px;}
+    .score-bar-wrap{display:flex;align-items:center;gap:8px;}
+    .score-bar-bg{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
+    .score-bar-fill{height:100%;background:var(--teal);border-radius:2px;transition:width 0.8s cubic-bezier(.22,1,.36,1);}
+    .score-val{font-size:11px;color:var(--teal);font-weight:700;min-width:34px;text-align:right;}
+    .result-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;}
+    .tag{font-size:10px;padding:2px 7px;border-radius:3px;background:var(--panel2);color:var(--muted);border:1px solid var(--border);}
+    .empty-state{padding:40px 20px;text-align:center;color:var(--muted);font-size:12px;line-height:1.8;}
+    .empty-state .icon{font-size:36px;margin-bottom:12px;}
+    .map-wrap{flex:1;position:relative;overflow:hidden;}
+    #map{width:100%;height:100%;}
+    .mapboxgl-popup-content{background:var(--panel)!important;border:1px solid var(--teal)!important;border-radius:10px!important;box-shadow:0 8px 32px rgba(0,212,170,0.2)!important;color:var(--white)!important;font-family:var(--font-mono)!important;padding:14px!important;}
+    .mapboxgl-popup-tip{border-top-color:var(--panel)!important;}
+    .mapboxgl-popup-close-button{color:var(--muted)!important;font-size:16px!important;}
+    .popup-city{font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--teal);margin-bottom:2px;}
+    .popup-score{font-size:10px;color:var(--muted);margin-bottom:8px;}
+    .popup-reason{font-size:12px;line-height:1.7;color:var(--white);margin-bottom:10px;}
+    .popup-stats{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+    .popup-stat{background:var(--panel2);border-radius:6px;padding:6px 8px;}
+    .popup-stat-label{font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:2px;}
+    .popup-stat-val{font-size:13px;font-weight:500;color:var(--white);}
+    .mapboxgl-ctrl-group{background:var(--panel)!important;border:1px solid var(--border)!important;}
+    .mapboxgl-ctrl-group button{background:var(--panel)!important;}
+    .mapboxgl-ctrl-icon{filter:invert(1)!important;}
+    .mapboxgl-ctrl-attrib{background:rgba(10,14,26,0.7)!important;font-size:9px!important;}
+    .loading-overlay{position:absolute;inset:0;background:rgba(10,14,26,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:500;backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity 0.3s;}
+    .loading-overlay.visible{opacity:1;pointer-events:all;}
+    .spinner{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:16px;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .loading-text{font-family:var(--font-head);font-size:14px;color:var(--teal);}
+    .loading-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+    .dev-banner{position:absolute;bottom:12px;right:12px;background:rgba(245,158,11,0.15);border:1px solid var(--orange);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--orange);z-index:400;max-width:260px;line-height:1.5;}
+    .dev-banner strong{display:block;margin-bottom:2px;}
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Founder<span>Map</span></div>
+  <div class="status-badge">
+    <div class="status-dot"></div>
+    <span>MOCK DATA MODE — ML Model pending</span>
+  </div>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="section-label">Company Profile</div>
+      <label>Industry</label>
+      <select id="industry">
+        <option value="tech">Technology / SaaS</option>
+        <option value="biotech">Biotech / Life Sciences</option>
+        <option value="fintech">Fintech</option>
+        <option value="hardware">Hardware / Manufacturing</option>
+        <option value="climate">Climate Tech</option>
+        <option value="media">Media / Creative</option>
+        <option value="ecommerce">eCommerce / Logistics</option>
+      </select>
+      <label>Stage</label>
+      <select id="stage">
+        <option value="idea">Idea Stage</option>
+        <option value="pre-seed">Pre-Seed</option>
+        <option value="seed">Seed</option>
+        <option value="series-a">Series A</option>
+      </select>
+      <label>Team Size Goal (12 mo)</label>
+      <input type="range" id="teamSize" min="2" max="100" value="15" />
+      <div class="range-row"><span>2</span><span id="teamSizeVal">15 people</span><span>100</span></div>
+      <label>Annual Budget (ops)</label>
+      <select id="budget">
+        <option value="low">Under $500K</option>
+        <option value="mid" selected>$500K – $2M</option>
+        <option value="high">$2M – $10M</option>
+        <option value="xl">$10M+</option>
+      </select>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-label">Priorities</div>
+      <div class="pill-group">
+        <div class="pill active" data-val="talent">Talent Pool</div>
+        <div class="pill active" data-val="cost">Low Cost</div>
+        <div class="pill" data-val="vc">VC Access</div>
+        <div class="pill" data-val="culture">Startup Culture</div>
+        <div class="pill" data-val="university">University Proximity</div>
+        <div class="pill" data-val="remote">Remote Friendly</div>
+        <div class="pill" data-val="transit">Public Transit</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-label">Geographic Preference</div>
+      <label>Region</label>
+      <select id="region">
+        <option value="all">All US</option>
+        <option value="west">West Coast</option>
+        <option value="east">East Coast</option>
+        <option value="midwest">Midwest</option>
+        <option value="south">South / Southeast</option>
+        <option value="southwest">Southwest</option>
+      </select>
+      <button class="run-btn" id="runBtn" onclick="runAnalysis()">⚡ Find My City</button>
+    </div>
+
+    <div id="resultsArea">
+      <div class="empty-state">
+        <div class="icon">🗺️</div>
+        Fill out your profile and click<br>
+        <strong style="color:var(--teal)">Find My City</strong><br>
+        to see recommendations
+      </div>
+    </div>
+  </div>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+      <div class="loading-text">Analyzing cities...</div>
+      <div class="loading-sub" id="loadingSub">Running model · 0%</div>
+    </div>
+    <div class="dev-banner">
+      <strong>⚠ Dev Mode: Mock Data</strong>
+      Replace <code>getMockRecommendations()</code> with real API call when ML model is ready.
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Step 1: Dynamically load Mapbox, then run everything inside the callback ─
+(function loadMapbox() {
+  var css = document.createElement('link');
+  css.rel = 'stylesheet';
+  css.href = 'https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css';
+  document.head.appendChild(css);
+
+  var js = document.createElement('script');
+  js.src = 'https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js';
+  js.onload = bootApp;
+  js.onerror = function() {
+    document.getElementById('map').innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#6b7fa3;font-family:monospace;font-size:13px;flex-direction:column;gap:16px;padding:40px;text-align:center">' +
+      '<span style="font-size:40px">🗺️</span>' +
+      '<span>Mapbox could not load.<br>Open this file via a local server:<br><br>' +
+      '<code style="background:#1a2235;padding:6px 12px;border-radius:6px;color:#00d4aa">npx serve .</code><br><br>' +
+      'then visit <code style="background:#1a2235;padding:6px 12px;border-radius:6px;color:#00d4aa">http://localhost:3000</code></span></div>';
+  };
+  document.body.appendChild(js);
+})();
+
+// ─── Step 2: Everything lives here — only runs after Mapbox is ready ──────────
+function bootApp() {
+
+  // CITY DATABASE
+  var CITY_DB = [
+    { id:'sf', name:'San Francisco', state:'CA', region:'west', lat:37.7749, lng:-122.4194,
+      features:{ talent:0.97, cost:0.12, vc:0.99, culture:0.98, university:0.85, remote:0.82, transit:0.80, industries:['tech','fintech','biotech','climate'] },
+      stats:{ avgRent:'$3,800/mo', techTalent:'Very High', vcDeals:'1,200+/yr', costIdx:'Extreme' },
+      blurb:'Unmatched VC density and tech talent, but highest operating costs in the US. Best for well-funded tech and fintech startups.' },
+    { id:'austin', name:'Austin', state:'TX', region:'south', lat:30.2672, lng:-97.7431,
+      features:{ talent:0.78, cost:0.62, vc:0.65, culture:0.85, university:0.75, remote:0.75, transit:0.42, industries:['tech','hardware','ecommerce','media'] },
+      stats:{ avgRent:'$1,900/mo', techTalent:'High', vcDeals:'350+/yr', costIdx:'Moderate' },
+      blurb:'No state income tax, booming startup scene, and lower costs than coastal hubs. Strong for tech, hardware, and consumer startups.' },
+    { id:'nyc', name:'New York City', state:'NY', region:'east', lat:40.7128, lng:-74.0060,
+      features:{ talent:0.95, cost:0.15, vc:0.94, culture:0.90, university:0.90, remote:0.70, transit:0.99, industries:['fintech','media','ecommerce','tech'] },
+      stats:{ avgRent:'$3,200/mo', techTalent:'Very High', vcDeals:'900+/yr', costIdx:'Very High' },
+      blurb:'World-class fintech and media ecosystem. Dense talent and VC network. Second only to SF in startup activity.' },
+    { id:'miami', name:'Miami', state:'FL', region:'south', lat:25.7617, lng:-80.1918,
+      features:{ talent:0.62, cost:0.55, vc:0.58, culture:0.72, university:0.55, remote:0.85, transit:0.45, industries:['fintech','tech','media','ecommerce'] },
+      stats:{ avgRent:'$2,400/mo', techTalent:'Growing', vcDeals:'180+/yr', costIdx:'Moderate' },
+      blurb:'Rising fintech and web3 hub with no state income tax. Attracting relocating founders and remote teams post-2020.' },
+    { id:'chicago', name:'Chicago', state:'IL', region:'midwest', lat:41.8781, lng:-87.6298,
+      features:{ talent:0.80, cost:0.60, vc:0.60, culture:0.70, university:0.82, remote:0.68, transit:0.85, industries:['fintech','ecommerce','hardware','tech'] },
+      stats:{ avgRent:'$1,700/mo', techTalent:'High', vcDeals:'250+/yr', costIdx:'Moderate' },
+      blurb:'Underrated Midwest powerhouse with strong fintech and logistics ecosystems. Great university pipeline and reasonable costs.' },
+    { id:'seattle', name:'Seattle', state:'WA', region:'west', lat:47.6062, lng:-122.3321,
+      features:{ talent:0.90, cost:0.35, vc:0.72, culture:0.82, university:0.80, remote:0.88, transit:0.72, industries:['tech','climate','hardware','biotech'] },
+      stats:{ avgRent:'$2,400/mo', techTalent:'Very High', vcDeals:'400+/yr', costIdx:'High' },
+      blurb:'Amazon and Microsoft hubs create massive senior tech talent availability. Strong for cloud, climate, and enterprise SaaS.' },
+    { id:'boston', name:'Boston', state:'MA', region:'east', lat:42.3601, lng:-71.0589,
+      features:{ talent:0.88, cost:0.30, vc:0.80, culture:0.78, university:0.99, remote:0.68, transit:0.82, industries:['biotech','tech','fintech','hardware'] },
+      stats:{ avgRent:'$2,900/mo', techTalent:'Very High', vcDeals:'500+/yr', costIdx:'High' },
+      blurb:'MIT, Harvard, and 65+ universities create an unmatched biotech and deep-tech talent pipeline. Life sciences capital of the US.' },
+    { id:'denver', name:'Denver', state:'CO', region:'west', lat:39.7392, lng:-104.9903,
+      features:{ talent:0.68, cost:0.58, vc:0.50, culture:0.72, university:0.65, remote:0.88, transit:0.60, industries:['tech','climate','ecommerce','hardware'] },
+      stats:{ avgRent:'$1,800/mo', techTalent:'Good', vcDeals:'120+/yr', costIdx:'Moderate' },
+      blurb:'Rapidly growing startup scene with lower costs than coastal cities. Strong remote culture and quality of life draws top talent.' },
+    { id:'raleigh', name:'Raleigh', state:'NC', region:'south', lat:35.7796, lng:-78.6382,
+      features:{ talent:0.70, cost:0.72, vc:0.42, culture:0.62, university:0.85, remote:0.75, transit:0.40, industries:['tech','biotech','hardware'] },
+      stats:{ avgRent:'$1,400/mo', techTalent:'Good', vcDeals:'80+/yr', costIdx:'Low' },
+      blurb:'Research Triangle offers elite university talent at fraction of coastal costs. Biotech and semiconductor industries thriving.' },
+    { id:'la', name:'Los Angeles', state:'CA', region:'west', lat:34.0522, lng:-118.2437,
+      features:{ talent:0.85, cost:0.25, vc:0.78, culture:0.88, university:0.80, remote:0.80, transit:0.45, industries:['media','tech','ecommerce','climate'] },
+      stats:{ avgRent:'$2,800/mo', techTalent:'High', vcDeals:'600+/yr', costIdx:'Very High' },
+      blurb:'Dominant in media, creator economy, and consumer tech. Strong VC presence and diverse talent pool across entertainment and tech.' },
+    { id:'atlanta', name:'Atlanta', state:'GA', region:'south', lat:33.7490, lng:-84.3880,
+      features:{ talent:0.70, cost:0.68, vc:0.52, culture:0.68, university:0.75, remote:0.72, transit:0.60, industries:['tech','fintech','ecommerce','media'] },
+      stats:{ avgRent:'$1,500/mo', techTalent:'Good', vcDeals:'150+/yr', costIdx:'Low-Moderate' },
+      blurb:"Southeast's largest tech hub with diverse talent and affordable ops. Strong fintech scene and home to major Fortune 500 enterprises." },
+    { id:'phoenix', name:'Phoenix', state:'AZ', region:'southwest', lat:33.4484, lng:-112.0740,
+      features:{ talent:0.60, cost:0.70, vc:0.38, culture:0.58, university:0.60, remote:0.85, transit:0.35, industries:['tech','hardware','ecommerce','fintech'] },
+      stats:{ avgRent:'$1,300/mo', techTalent:'Growing', vcDeals:'60+/yr', costIdx:'Low' },
+      blurb:'Rapidly growing with major semiconductor investments (TSMC). Low costs and remote-friendly culture. VC ecosystem still developing.' },
+  ];
+
+  // ─── MAP ────────────────────────────────────────────────────────────────────
+  // uncomment the below line and put your own api key in
+  // mapboxgl.accessToken = 'pk.eyJ1IjoiYWt1bWFyODMiLCJhIjoiY21senh5ZWU4MGMwMjNrcG80bGxsbzUzeCJ9.Fje9lBLKjMOmubK-a8gNTQ';
+
+  var map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/dark-v11',
+    center: [-96, 38.5],
+    zoom: 3.5,
+  });
+
+  map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
+
+  var markers = [];
+
+  function clearMarkers() {
+    markers.forEach(function(m) { m.remove(); });
+    markers = [];
+  }
+
+  function addCityMarker(city, score, rank, isTop) {
+    var color = isTop ? '#00d4aa' : '#3b82f6';
+    var size  = isTop ? 20 : 13;
+
+    var el = document.createElement('div');
+    el.style.cssText = 'width:'+size+'px;height:'+size+'px;background:'+color+';border-radius:50%;border:2px solid rgba(255,255,255,0.85);box-shadow:0 0 '+(isTop?'18px 5px':'8px 2px')+' '+color+'99;cursor:pointer;position:relative;';
+
+    if (isTop) {
+      var lbl = document.createElement('div');
+      lbl.style.cssText = 'position:absolute;top:-24px;left:50%;transform:translateX(-50%);background:'+color+';color:#000;font-family:\'Syne\',sans-serif;font-weight:800;font-size:9px;padding:2px 6px;border-radius:3px;white-space:nowrap;pointer-events:none;';
+      lbl.textContent = '#1 PICK';
+      el.appendChild(lbl);
+    }
+
+    var popup = new mapboxgl.Popup({ maxWidth: '300px', offset: size / 2 + 6 })
+      .setHTML(
+        '<div class="popup-city">#'+rank+' '+city.name+', '+city.state+'</div>' +
+        '<div class="popup-score">Match Score: '+score+'/99</div>' +
+        '<div class="popup-reason">'+city.blurb+'</div>' +
+        '<div class="popup-stats">' +
+          '<div class="popup-stat"><div class="popup-stat-label">AVG RENT</div><div class="popup-stat-val">'+city.stats.avgRent+'</div></div>' +
+          '<div class="popup-stat"><div class="popup-stat-label">TECH TALENT</div><div class="popup-stat-val">'+city.stats.techTalent+'</div></div>' +
+          '<div class="popup-stat"><div class="popup-stat-label">VC DEALS/YR</div><div class="popup-stat-val">'+city.stats.vcDeals+'</div></div>' +
+          '<div class="popup-stat"><div class="popup-stat-label">COST INDEX</div><div class="popup-stat-val">'+city.stats.costIdx+'</div></div>' +
+        '</div>'
+      );
+
+    var marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([city.lng, city.lat])
+      .setPopup(popup)
+      .addTo(map);
+
+    markers.push(marker);
+    return marker;
+  }
+
+  // ─── SCORING (swap this with real API fetch when ML ready) ──────────────────
+  function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+  async function simulateLoading() {
+    var overlay = document.getElementById('loadingOverlay');
+    var sub = document.getElementById('loadingSub');
+    overlay.classList.add('visible');
+    var steps = ['Filtering cities · 10%','Scoring talent · 30%','Cost constraints · 50%','Industry fit · 70%','Ranking · 90%','Done · 100%'];
+    for (var i = 0; i < steps.length; i++) { sub.textContent = steps[i]; await sleep(260); }
+    await sleep(150);
+    overlay.classList.remove('visible');
+  }
+
+  async function getMockRecommendations(inputs) {
+    await simulateLoading();
+    var results = CITY_DB
+      .filter(function(c) { return inputs.region === 'all' || c.region === inputs.region; })
+      .map(function(city) {
+        var score = 0, maxScore = 0;
+        inputs.priorities.forEach(function(p) {
+          if (city.features[p] !== undefined) { score += city.features[p]; maxScore++; }
+        });
+        if (city.features.industries.indexOf(inputs.industry) !== -1) score += 0.3;
+        if (inputs.budget === 'low' && city.features.cost < 0.4) score -= 0.4;
+        if (inputs.budget === 'mid' && city.features.cost < 0.3) score -= 0.2;
+        if (inputs.stage === 'idea' || inputs.stage === 'pre-seed') score += city.features.cost * 0.3;
+        if (inputs.stage === 'series-a') score += city.features.vc * 0.3;
+        if (inputs.teamSize > 50 && city.features.talent < 0.7) score -= 0.3;
+        return { city: city, score: Math.min(99, Math.round((score / (maxScore + 0.9)) * 100 + 10)) };
+      })
+      .sort(function(a, b) { return b.score - a.score; })
+      .slice(0, 5);
+    return results;
+  }
+
+  // ─── UI WIRING ───────────────────────────────────────────────────────────────
+  document.querySelectorAll('.pill').forEach(function(pill) {
+    pill.addEventListener('click', function() { pill.classList.toggle('active'); });
+  });
+
+  document.getElementById('teamSize').addEventListener('input', function(e) {
+    document.getElementById('teamSizeVal').textContent = e.target.value + ' people';
+  });
+
+  function renderResults(results) {
+    var area = document.getElementById('resultsArea');
+    area.innerHTML = '';
+    var bounds = [];
+
+    results.forEach(function(item, i) {
+      var city = item.city, score = item.score;
+      var rank = i + 1, isTop = rank === 1;
+      var marker = addCityMarker(city, score, rank, isTop);
+
+      var card = document.createElement('div');
+      card.className = 'result-card' + (isTop ? ' active' : '');
+      card.innerHTML =
+        '<div class="result-rank">#'+rank+'</div>' +
+        '<div class="result-city">'+city.name+'</div>' +
+        '<div class="result-state">'+city.state+' · '+city.features.industries.join(', ')+'</div>' +
+        '<div class="score-bar-wrap"><div class="score-bar-bg"><div class="score-bar-fill" style="width:0%"></div></div><div class="score-val">'+score+'</div></div>' +
+        '<div class="result-tags">'+
+          city.features.industries.slice(0,3).map(function(t){return '<span class="tag">'+t+'</span>';}).join('') +
+          '<span class="tag">Cost: '+Math.round(city.features.cost*100)+'%</span>' +
+        '</div>';
+
+      (function(c, m) {
+        card.addEventListener('click', function() {
+          document.querySelectorAll('.result-card').forEach(function(el) { el.classList.remove('active'); });
+          card.classList.add('active');
+          map.flyTo({ center: [c.lng, c.lat], zoom: 8, duration: 1200 });
+          m.togglePopup();
+        });
+      })(city, marker);
+
+      area.appendChild(card);
+      bounds.push([city.lng, city.lat]);
+
+      setTimeout(function() {
+        var fill = card.querySelector('.score-bar-fill');
+        if (fill) fill.style.width = score + '%';
+      }, 100 + i * 80);
+    });
+
+    if (results.length > 0) {
+      var top = results[0];
+      map.flyTo({ center: [top.city.lng, top.city.lat], zoom: 5, duration: 1200 });
+      setTimeout(function() { if (markers[0]) markers[0].togglePopup(); }, 1500);
+    }
+
+    if (bounds.length > 1) {
+      setTimeout(function() {
+        var llb = bounds.reduce(function(b, c) { return b.extend(c); }, new mapboxgl.LngLatBounds(bounds[0], bounds[0]));
+        map.fitBounds(llb, { padding: 80, maxZoom: 6, duration: 2000 });
+      }, 2800);
+    }
+  }
+
+  // ─── MAIN — exposed globally for onclick ─────────────────────────────────────
+  window.runAnalysis = async function() {
+    var btn = document.getElementById('runBtn');
+    btn.disabled = true;
+    btn.textContent = 'Analyzing...';
+
+    var inputs = {
+      industry:   document.getElementById('industry').value,
+      stage:      document.getElementById('stage').value,
+      budget:     document.getElementById('budget').value,
+      teamSize:   parseInt(document.getElementById('teamSize').value),
+      region:     document.getElementById('region').value,
+      priorities: Array.from(document.querySelectorAll('.pill.active')).map(function(p) { return p.dataset.val; }),
+    };
+
+    // ── SWAP when ML ready ───────────────────────────────────────────────────
+    // var res = await fetch('/api/recommend', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(inputs) });
+    // var results = await res.json();
+    // ─────────────────────────────────────────────────────────────────────────
+    var results = await getMockRecommendations(inputs);
+
+    clearMarkers();
+    renderResults(results);
+
+    btn.disabled = false;
+    btn.textContent = '⚡ Find My City';
+  };
+
+} // end bootApp
+</script>
+</body>
+</html>
