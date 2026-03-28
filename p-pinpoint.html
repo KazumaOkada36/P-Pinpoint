@@ -290,6 +290,7 @@ html,body{height:100%;overflow:hidden;background:#0a0c10;font-family:'DM Sans',s
 .modal-input::placeholder{color:rgba(255,255,255,.2)}
 .modal-div{text-align:center;font-size:11px;color:rgba(255,255,255,.2);margin:12px 0}
 </style>
+<script src="config.js"></script>
 </head>
 <body>
 
@@ -420,7 +421,8 @@ map = L.map('map',{
   center:[38.5,-96],zoom:4,minZoom:3,maxZoom:13,
   zoomControl:false
 });
-L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/256/{z}/{x}/{y}@2x?access_token=pk.eyJ1Ijoia2F6dW1hb2thZGE2IiwiYSI6ImNtZ2d2cGl2YzBvZXkybHB5d3Fnd21zNjEifQ.zaEw5vTQTbZEWXpy8_2Jrg', {
+const token = window.MAPBOX_TOKEN;
+L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/256/{z}/{x}/{y}@2x?access_token=${token}`, {
   maxZoom: 22,
   tileSize: 256,
   attribution: '© Mapbox'
