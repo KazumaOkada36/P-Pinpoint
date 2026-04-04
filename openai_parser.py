@@ -1,6 +1,9 @@
 from openai import OpenAI
 import os
 import json
+from dotenv import load_dotenv
+
+load_dotenv("secrets.env")
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -42,7 +45,7 @@ SCHEMA = {
 def parse_business_message(message: str):
     try:
         response = client.responses.create(
-            model="gpt-5.4",
+            model="gpt-4o",
             input=[
                 {
                     "role": "system",
