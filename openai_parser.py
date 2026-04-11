@@ -19,8 +19,7 @@ SCHEMA = {
         "priorities_known": {"type": "boolean"},
         "user_priorities": {
             "type": "array",
-            "items": {"type": "string"}
-        },
+            "items": {"type": "string"}        },
         "suggested_priorities": {
             "type": "array",
             "items": {"type": "string"},
