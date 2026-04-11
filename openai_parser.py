@@ -1,6 +1,6 @@
-from openai import OpenAI
 import os
 import json
+from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv("secrets.env")
@@ -19,7 +19,8 @@ SCHEMA = {
         "priorities_known": {"type": "boolean"},
         "user_priorities": {
             "type": "array",
-            "items": {"type": "string"}        },
+            "items": {"type": "string"}
+        },
         "suggested_priorities": {
             "type": "array",
             "items": {"type": "string"},
@@ -43,31 +44,38 @@ SCHEMA = {
 
 def parse_business_message(message: str):
     try:
-        response = client.chat.completions.create(
+        response = client.responses.create(
             model="gpt-4o",
-            messages=[
+            input=[
                 {
                     "role": "system",
                     "content": (
                         "You are Pinpoint AI's intake parser. "
-                        "Extract the user's business details and return ONLY a JSON object with these exact fields - never omit any: "
-                        "business_type (string or null), "
-                        "region (string or null, expand shorthand e.g. SoCal -> Southern California), "
-                        "employee_count (integer or null), "
-                        "valuation_usd (number or null), "
-                        "monthly_rent_budget_usd (number or null), "
-                        "priorities_known (boolean, true only if user explicitly states priorities), "
-                        "user_priorities (array of strings, empty [] if not stated), "
-                        "suggested_priorities (array of exactly 3 strings, always provide 3 relevant suggestions), "
-                        "follow_up_question (string, ask what matters most if priorities unknown). "
-                        "No extra fields. No markdown. No explanation. Just the JSON object."
+                        "Extract the user's business details into structured JSON. "
+                        "If the user does not clearly state priorities, set priorities_known to false "
+                        "and suggest exactly 3 likely priorities. "
+                        "Normalize obvious shorthand when reasonable, such as SoCal to Southern California "
+                        "and 700k to 700000. "
+                        "Do not recommend locations yet."
                     )
                 },
-                {"role": "user", "content": message}
+                {
+                    "role": "user",
+                    "content": message
+                }
             ],
-            response_format={"type": "json_object"}
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "business_intake",
+                    "strict": True,
+                    "schema": SCHEMA
+                }
+            }
         )
-        return json.loads(response.choices[0].message.content)
+
+        return json.loads(response.output_text)
+
     except Exception as e:
         print("Parser error:", e)
 

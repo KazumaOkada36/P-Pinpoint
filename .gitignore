@@ -1,7 +1,5 @@
 config.js
 archive/
+archive/
 node_modules/
 secrets.env
-__pycache__/
-static/
-*.pyc
