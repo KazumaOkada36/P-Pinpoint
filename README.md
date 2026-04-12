@@ -1,181 +1,233 @@
 # P-Pinpoint
 
-> **Team Repo:** [github.com/KazumaOkada36/P-Pinpoint](https://github.com/KazumaOkada36/P-Pinpoint)
-> **Duration:** 10 Weeks
-> **Goal:** Build a web application that recommends optimal business locations based on company size, stage (startup, pharma, enterprise, etc.), and relevant geographic/economic features — powered by a neural network backend and an interactive frontend.
+> AI-powered business location recommender for the US market.
+
+Describe your company in plain English. Pinpoint parses your requirements using Claude, scores all 50 US states against real economic data, and returns ranked recommendations with explanations — all from a terminal CLI.
 
 ---
 
-## High-Level Architecture
+## What it does
+
+1. **You describe your business** — size, industry, priorities (talent, cost, growth, etc.)
+2. **Claude parses your input** — extracts a structured profile via tool use
+3. **The recommender scores every state** — using GDP data from the US Bureau of Economic Analysis
+4. **You get ranked results** — with the key economic signals driving each recommendation
+
+---
+
+## Quick start
+
+**Prerequisites:** Python 3.10+, an [Anthropic API key](https://console.anthropic.com/)
+
+```bash
+# 1. Clone and install
+git clone https://github.com/KazumaOkada36/P-Pinpoint
+cd P-Pinpoint
+pip install -e .
+
+# 2. Run the setup wizard
+pinpoint setup
+```
+
+The wizard will ask for your API key, let you pick a model, and train the recommender on the bundled dataset.
+
+---
+
+## CLI usage
+
+### Interactive REPL
+
+```bash
+pinpoint
+```
+
+Just type and talk. Claude handles the rest.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Frontend (React)                  │
-│  Input Form → Interactive Map → Results Dashboard   │
-└──────────────────────┬──────────────────────────────┘
-                       │  REST API (Flask / FastAPI)
-┌──────────────────────▼──────────────────────────────┐
-│                    Backend (Python)                  │
-│  Data Pipeline → Feature Engineering → ML Model     │
-└──────────────────────┬──────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────┐
-│              Database / Data Store                   │
-│  Location features, company profiles, model weights │
-└─────────────────────────────────────────────────────┘
+> We're a 60-person SaaS startup, Series B. We need strong engineering talent
+  and a fast-growing tech ecosystem. Open to anywhere on the West Coast.
+
+  #1 Washington (0.83)   — top information tech GDP share, strong professional services
+  #2 California (0.81)   — largest tech ecosystem, highest professional services GDP
+  #3 Colorado  (0.74)    — fastest GDP growth rate, growing tech sector
+
+  Would you like to explore any of these in more detail, or adjust your priorities?
+
+> What if cost efficiency matters more?
+```
+
+**Slash commands:**
+
+| Command | Description |
+|---|---|
+| `/model` | Switch between Opus, Sonnet, Haiku |
+| `/clear` | Reset the conversation |
+| `/train` | Retrain the recommender |
+| `/import <path>` | Load your own CSV data |
+| `/top <n>` | Change number of results shown |
+| `/config` | Show current settings |
+| `/help` | List all commands |
+| `/exit` | Quit |
+
+---
+
+### One-shot (no REPL)
+
+```bash
+# Recommend by priority keywords
+pinpoint recommend --priorities talent,tech_ecosystem,gdp_growth
+
+# More options
+pinpoint recommend --priorities manufacturing,logistics --top 10
+
+# Available priorities:
+# talent, tech_ecosystem, cost_efficiency, gdp_growth,
+# manufacturing, finance, healthcare, logistics, energy
 ```
 
 ---
 
-## Week-by-Week Timeline
+### Other commands
 
-### Phase 1 — Foundation (Weeks 1–3)
-
-#### Week 1: Project Scoping & Data Strategy
-| Task | Owner | Deliverable |
-|---|---|---|
-| Define target company categories (startup, pharma, tech, manufacturing, etc.) | All | Spec document |
-| Identify key location features (cost of living, talent pool density, tax incentives, proximity to universities/labs, infrastructure, etc.) | All | Feature list |
-| Survey & collect datasets (Census Bureau, BLS, Zillow, university locations, NIH/biotech hubs, etc.) | Data team | Raw data in `Data_Set/` |
-| Set up repo structure: `/frontend`, `/backend`, `/data`, `/models`, `/docs` | All | Clean repo |
-| Set up dev environment & CI (linting, basic test scaffold) | All | Working local setup |
-
-#### Week 2: Data Collection & Cleaning
-| Task | Owner | Deliverable |
-|---|---|---|
-| Scrape / download location datasets (city-level or zip-code-level) | Data team | CSVs in `Data_Set/` |
-| Clean and normalize data (handle missing values, standardize units) | Data team | `clean_data.py` pipeline |
-| Exploratory data analysis — distributions, correlations, outliers | Data team | EDA notebook (`notebooks/eda.ipynb`) |
-| Define the **label/target**: e.g., composite "suitability score" per location-company-type pair, or cluster-based ranking | All | Documented labeling strategy |
-| Begin frontend wireframes (Figma or sketches) | Frontend | Wireframe images / Figma link |
-
-#### Week 3: Feature Engineering & Frontend Scaffold
-| Task | Owner | Deliverable |
-|---|---|---|
-| Engineer features: normalize, encode categoricals, create composite indices (e.g., talent index, cost index, infrastructure index) | Data team | `feature_engineering.py` |
-| Build train/validation/test splits | Data team | Split datasets |
-| Scaffold React app: routing, layout, placeholder pages (Home, Input Form, Results) | Frontend | Running React app |
-| Set up backend server (Flask or FastAPI) with a health-check endpoint | Backend | `app.py` running on localhost |
+```bash
+pinpoint train                        # Retrain the recommender
+pinpoint import-data my_data.csv      # Add custom data, then retrain
+pinpoint doctor                       # System health check
+pinpoint config show                  # View current config
+pinpoint config set model claude-opus-4-6
+```
 
 ---
 
-### Phase 2 — Model Development & Core UI (Weeks 4–6)
+## Training setup
 
-#### Week 4: Baseline Model
-| Task | Owner | Deliverable |
-|---|---|---|
-| Implement a **baseline model** (e.g., weighted scoring / logistic regression / random forest) to establish benchmark performance | ML team | `models/baseline.py`, logged metrics |
-| Design neural network architecture (MLP or embedding-based) that takes company features + location features → suitability score | ML team | Architecture diagram |
-| Build the input form on frontend: company name, size (slider/dropdown), stage (startup/pharma/enterprise), industry | Frontend | Working form component |
-| Define REST API contract: `POST /predict` with request/response schema | Backend + Frontend | API spec (OpenAPI or doc) |
+### Data source
 
-#### Week 5: Neural Network Training
-| Task | Owner | Deliverable |
-|---|---|---|
-| Implement neural network in PyTorch or TensorFlow | ML team | `models/neural_net.py` |
-| Train on prepared dataset; tune hyperparameters (learning rate, layers, dropout) | ML team | Training logs, loss curves |
-| Compare NN vs. baseline — decide whether NN adds value or pivot to ensemble/gradient boosting | ML team | Comparison report |
-| Build interactive map component (Leaflet.js or Mapbox) on frontend | Frontend | Map rendering with dummy pins |
-| Implement `/predict` endpoint that loads model and returns top-N locations | Backend | Working endpoint |
+The recommender is trained on **CAGDP9** — the Bureau of Economic Analysis's *Real GDP by County and Metropolitan Area* dataset. The bundled data covers all 50 US states + DC from 2001 to 2024, split into one CSV per state:
 
-#### Week 6: Integration V1
-| Task | Owner | Deliverable |
-|---|---|---|
-| Connect frontend form → backend API → model inference → map display | All | End-to-end demo working locally |
-| Display results: ranked list of cities/regions with scores + map pins | Frontend | Results dashboard |
-| Add loading states, basic error handling | Frontend | Polished UX |
-| Write model evaluation script (accuracy, ranking metrics like NDCG or MAP) | ML team | `evaluate.py` |
-| **Milestone: Internal demo / midpoint review** | All | Working prototype |
+```
+Data_Set/clean_data/
+  CAGDP9_CA_2001_2024.csv
+  CAGDP9_TX_2001_2024.csv
+  ... (51 files total)
+```
 
----
+Each file contains GDP broken down by industry sector (NAICS codes), in thousands of chained 2017 dollars.
 
-### Phase 3 — Refinement & Polish (Weeks 7–9)
+### Feature engineering
 
-#### Week 7: Model Improvement & Advanced Features
-| Task | Owner | Deliverable |
-|---|---|---|
-| Incorporate additional data sources or features based on midpoint feedback | Data team | Updated dataset |
-| Experiment with model improvements: feature importance analysis (SHAP), architecture tweaks, or alternative algorithms (XGBoost, ensemble) | ML team | Improved model metrics |
-| Add explainability to results: "Why this location?" — show top contributing factors per recommendation | Backend + Frontend | Explanation cards in UI |
-| Add filters/preferences: budget range, preferred region, proximity to airports/universities | Frontend | Advanced input options |
+For each state, the following features are extracted from the 2024 data:
 
-#### Week 8: UI Polish & Edge Cases
-| Task | Owner | Deliverable |
-|---|---|---|
-| Responsive design — ensure works on mobile and tablet | Frontend | Mobile-friendly UI |
-| Side-by-side location comparison feature | Frontend | Comparison view |
-| Handle edge cases: unusual inputs, no results, model uncertainty | Backend | Graceful error responses |
-| Add data visualizations: bar charts for factor breakdown, radar/spider charts for location profiles | Frontend | Chart components (Recharts / D3) |
-| Write unit & integration tests for API and model inference | All | Test suite (pytest + Jest) |
-
-#### Week 9: Deployment & Performance
-| Task | Owner | Deliverable |
-|---|---|---|
-| Containerize app (Docker) | Backend | `Dockerfile`, `docker-compose.yml` |
-| Deploy backend (Render, Railway, AWS, or GCP) | Backend | Live API endpoint |
-| Deploy frontend (Vercel, Netlify, or GitHub Pages) | Frontend | Live website URL |
-| Performance optimization: model inference caching, lazy-load map tiles | All | <2s response time target |
-| Load testing & stress testing | Backend | Performance report |
-
----
-
-### Phase 4 — Launch (Week 10)
-
-#### Week 10: Final Testing, Documentation & Presentation
-| Task | Owner | Deliverable |
-|---|---|---|
-| End-to-end QA: test all user flows with real inputs | All | Bug-fix log |
-| Write `README.md` with setup instructions, architecture overview, screenshots | All | Updated repo README |
-| Create project documentation: data sources, model methodology, API docs | All | `/docs` folder |
-| Prepare demo presentation / video walkthrough | All | Slide deck + demo |
-| **Final launch / submission** | All | 🚀 Live product |
-
----
-
-## Key Milestones
-
-| Week | Milestone |
+| Feature | Description |
 |---|---|
-| 3 | Data pipeline complete, frontend scaffold running, backend server live |
-| 6 | **Working prototype** — end-to-end form → model → map results |
-| 9 | Deployed to production, polished UI, tested |
-| 10 | **Final launch** — documented, presented, live |
+| `information_tech` | GDP share: information sector |
+| `professional_services` | GDP share: professional & technical services |
+| `finance` | GDP share: finance & insurance |
+| `manufacturing` | GDP share: manufacturing |
+| `healthcare` | GDP share: health care & social assistance |
+| `transportation_logistics` | GDP share: transportation & warehousing |
+| `mining_energy` | GDP share: mining, quarrying, oil & gas |
+| `education` | GDP share: educational services |
+| `construction` | GDP share: construction |
+| `retail` | GDP share: retail trade |
+| `gdp_growth_rate` | Annualized GDP growth, 2020–2024 |
+| `total_gdp_inv` | Inverse of total GDP (proxy for lower cost / smaller market) |
+| + 11 more | Other NAICS sectors |
 
----
+All features are normalized to [0, 1] with MinMaxScaler before scoring.
 
-## Suggested Tech Stack
+### How recommendations are scored
 
-| Layer | Technology |
+Each user priority maps to a weighted combination of features:
+
+| Priority | Feature weights |
 |---|---|
-| Frontend | React + TypeScript, Leaflet.js or Mapbox GL, Recharts/D3 |
-| Backend | FastAPI (Python), Pydantic for validation |
-| ML/Model | PyTorch (or scikit-learn/XGBoost as fallback) |
-| Data | Pandas, NumPy, SHAP for explainability |
-| Database | SQLite (dev) → PostgreSQL (prod), or simply CSV/Parquet files |
-| Deployment | Docker, Vercel (frontend), Render/Railway (backend) |
-| CI/CD | GitHub Actions |
+| `talent` | information_tech (35%), professional_services (30%), education (20%), management (15%) |
+| `tech_ecosystem` | information_tech (50%), professional_services (30%), management (20%) |
+| `gdp_growth` | gdp_growth_rate (100%) |
+| `cost_efficiency` | total_gdp_inv (60%), hospitality_inv (40%) |
+| `manufacturing` | manufacturing (60%), wholesale (20%), logistics (20%) |
+| `finance` | finance (70%), real_estate (20%), management (10%) |
+| `healthcare` | healthcare (70%), education (20%), professional_services (10%) |
+| `logistics` | transportation_logistics (50%), wholesale (30%), manufacturing (20%) |
+| `energy` | mining_energy (60%), utilities (40%) |
+
+When multiple priorities are given, their weight vectors are averaged. States are then ranked by **cosine similarity** between the query vector and their normalized feature vectors.
+
+### Retraining on your own data
+
+You can supplement the BEA data with any custom CSV that has a `state` column (2-letter code) and numeric feature columns:
+
+```csv
+state,talent_score,infrastructure_score,cost_index
+CA,0.92,0.88,0.25
+TX,0.78,0.82,0.61
+NY,0.85,0.79,0.20
+...
+```
+
+```bash
+pinpoint import-data my_scores.csv
+pinpoint train
+```
+
+Custom features are merged into the existing feature matrix before fitting. The model is saved to `~/.pinpoint/recommender.pkl`.
 
 ---
 
-## Data Sources to Explore
+## Configuration
 
-- U.S. Census Bureau (population, demographics, income)
-- Bureau of Labor Statistics (employment by industry, wages)
-- Zillow / Redfin (commercial real estate costs)
-- NCSES / NSF (R&D expenditure by region)
-- University locations (proximity to talent pipelines)
-- NIH funding by state (pharma relevance)
-- State tax incentive databases
-- Infrastructure scores (broadband, transit)
+Config is stored at `~/.pinpoint/config.json`. You can also use environment variables:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...   # API key
+```
+
+| Key | Default | Description |
+|---|---|---|
+| `api_key` | — | Anthropic API key |
+| `model` | `claude-sonnet-4-6` | Claude model to use |
+| `top_n` | `5` | Default number of results |
+| `data_dir` | bundled | Path to CAGDP9 CSV directory |
 
 ---
 
-## Risk Mitigation
+## Project structure
 
-| Risk | Mitigation |
-|---|---|
-| Insufficient labeled data for supervised learning | Use unsupervised clustering (DBSCAN, k-means) to generate pseudo-labels, or pivot to a scoring/ranking approach |
-| Neural network doesn't outperform simple models | Keep baseline model as production fallback — prioritize result quality over model complexity |
-| Data collection bottleneck | Start with a focused geography (e.g., top 200 U.S. metro areas) and expand later |
-| Integration delays | Define API contract early (Week 4); frontend and backend can develop in parallel with mocked data |
-| Scope creep | Freeze feature set after Week 7; Weeks 8–9 are polish only |
+```
+P-Pinpoint/
+├── src/pinpoint/
+│   ├── cli.py                  # Typer CLI — all commands
+│   ├── agent/
+│   │   ├── config.py           # Config file management
+│   │   ├── runner.py           # Claude API + tool-use loop
+│   │   └── system_prompt.py    # Claude's instructions
+│   ├── ui/
+│   │   ├── terminal.py         # Interactive REPL (prompt_toolkit)
+│   │   └── status.py           # Animated thinking spinner
+│   └── recommender/
+│       ├── features.py         # CSV -> feature matrix, priority weights
+│       ├── model.py            # Cosine similarity ranker (scikit-learn)
+│       └── trainer.py          # Train, save, load model
+├── Data_Set/
+│   ├── clean_data/             # 51 CAGDP9 CSV files (BEA, 2001-2024)
+│   └── converter.py            # Multi-format data converter
+├── main.py                     # Flask web backend (REST API)
+├── p-pinpoint.html             # Standalone frontend (Leaflet map)
+├── pyproject.toml              # Python package config
+└── CLI_USAGE.md                # Quick command reference
+```
+
+---
+
+## Web interface
+
+The project also includes a standalone web frontend (`p-pinpoint.html`) backed by a Flask server (`main.py`). To run it:
+
+```bash
+pip install flask flask-cors openai python-dotenv
+python main.py
+# Then open p-pinpoint.html in your browser
+```
+
+The web interface uses OpenAI GPT-4o for parsing (requires `OPENAI_API_KEY` in `secrets.env`). The CLI uses Claude.
