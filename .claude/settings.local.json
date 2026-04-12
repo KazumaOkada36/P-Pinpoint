@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "WebSearch",
+      "Bash(pip install:*)",
+      "Bash(pinpoint:*)",
+      "Bash(python:*)"
+    ]
+  }
+}
