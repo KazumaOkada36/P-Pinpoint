@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>p·Pinpoint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#0a0c10;font-family:'DM Sans',sans-serif}
+
+/* ─── LAYOUT ─── */
+.app{display:flex;height:100vh;width:100vw;background:#0a0c10}
+
+/* ─── SIDEBAR ─── */
+.sidebar{
+  width:320px;min-width:320px;
+  background:#0f1117;
+  border-right:.5px solid rgba(255,255,255,.07);
+  display:flex;flex-direction:column;
+  transition:width .28s cubic-bezier(.4,0,.2,1),min-width .28s cubic-bezier(.4,0,.2,1);
+  z-index:100;position:relative
+}
+.sidebar.expanded{width:100vw;min-width:100vw}
+.sidebar.collapsed{width:0;min-width:0;overflow:hidden;border:none}
+
+.sb-header{
+  padding:14px 16px;
+  border-bottom:.5px solid rgba(255,255,255,.07);
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0
+}
+.logo{font-size:14px;font-weight:600;color:#fff;letter-spacing:.02em}
+.logo em{color:#4ade80;font-style:normal}
+.hdr-btns{display:flex;gap:6px}
+.ico-btn{
+  width:28px;height:28px;border-radius:7px;
+  background:rgba(255,255,255,.05);border:.5px solid rgba(255,255,255,.09);
+  color:rgba(255,255,255,.45);font-size:14px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all .15s
+}
+.ico-btn:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.8)}
+.ico-btn.active{background:rgba(74,222,128,.15);border-color:rgba(74,222,128,.3);color:#4ade80}
+
+/* tabs */
+.tabs{display:flex;padding:10px 12px 0;gap:4px;flex-shrink:0}
+.tab{
+  font-size:11px;font-weight:500;padding:5px 11px;border-radius:7px;
+  cursor:pointer;color:rgba(255,255,255,.3);letter-spacing:.03em;transition:all .15s
+}
+.tab.on{background:rgba(74,222,128,.12);color:#4ade80}
+.tab:hover:not(.on){color:rgba(255,255,255,.6)}
+
+/* saved chats panel */
+.history-panel{display:none;flex-direction:column;flex:1;overflow:hidden}
+.history-panel.on{display:flex}
+.hist-label{font-size:10px;font-weight:500;color:rgba(255,255,255,.2);letter-spacing:.08em;text-transform:uppercase;padding:12px 16px 6px}
+.hist-list{overflow-y:auto;flex:1;padding:0 8px 8px}
+.hist-list::-webkit-scrollbar{display:none}
+.h-item{
+  padding:9px 10px;border-radius:8px;cursor:pointer;margin-bottom:2px;transition:background .15s
+}
+.h-item:hover{background:rgba(255,255,255,.05)}
+.h-item.on{background:rgba(74,222,128,.07)}
+.h-title{font-size:12px;color:rgba(255,255,255,.7);font-weight:400;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.h-meta{font-size:10px;color:rgba(255,255,255,.25)}
+.h-item.on .h-title{color:#4ade80}
+
+/* chat panel */
+.chat-panel{display:flex;flex-direction:column;flex:1;overflow:hidden}
+.chat-panel.off{display:none}
+
+.msgs{flex:1;overflow-y:auto;padding:14px 14px 6px;display:flex;flex-direction:column;gap:12px}
+.msgs::-webkit-scrollbar{display:none}
+
+.msg{display:flex;flex-direction:column;gap:3px}
+.msg.u{align-items:flex-end}
+.msg.a{align-items:flex-start}
+.ai-tag{font-size:10px;color:rgba(74,222,128,.6);font-weight:500;padding-left:2px;letter-spacing:.04em}
+.bubble{
+  max-width:90%;padding:9px 12px;border-radius:10px;
+  font-size:12.5px;line-height:1.6;font-weight:400
+}
+.msg.u .bubble{
+  background:rgba(74,222,128,.13);color:rgba(255,255,255,.85);
+  border:.5px solid rgba(74,222,128,.22);border-bottom-right-radius:3px
+}
+.msg.a .bubble{
+  background:rgba(255,255,255,.05);color:rgba(255,255,255,.8);
+  border:.5px solid rgba(255,255,255,.08);border-bottom-left-radius:3px
+}
+.typing{display:flex;gap:4px;padding:10px 12px}
+.dot{width:6px;height:6px;border-radius:50%;background:rgba(74,222,128,.5);animation:blink 1.2s infinite}
+.dot:nth-child(2){animation-delay:.2s}
+.dot:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.2}40%{opacity:1}}
+
+.pin-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.chip{
+  font-size:10px;padding:3px 8px;border-radius:20px;
+  background:rgba(74,222,128,.1);color:#4ade80;
+  border:.5px solid rgba(74,222,128,.2);font-family:'DM Mono',monospace;
+  cursor:pointer;transition:background .15s
+}
+.chip:hover{background:rgba(74,222,128,.2)}
+
+.action-card{
+  margin-top:7px;background:rgba(74,222,128,.05);
+  border:.5px solid rgba(74,222,128,.14);border-radius:9px;
+  padding:9px 11px;font-size:11.5px;color:rgba(255,255,255,.6);line-height:1.65
+}
+.action-card strong{
+  color:#4ade80;font-weight:500;display:block;
+  margin-bottom:5px;font-size:10px;letter-spacing:.07em;text-transform:uppercase
+}
+.dl-btn{
+  margin-top:8px;display:inline-flex;align-items:center;gap:5px;
+  background:rgba(74,222,128,.18);color:#4ade80;
+  border:.5px solid rgba(74,222,128,.35);border-radius:7px;
+  padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer;
+  transition:all .15s;font-family:'DM Sans',sans-serif
+}
+.dl-btn:hover{background:rgba(74,222,128,.28)}
+
+/* input */
+.input-wrap{padding:10px 12px 14px;border-top:.5px solid rgba(255,255,255,.07);flex-shrink:0}
+.input-row{
+  display:flex;align-items:flex-end;gap:8px;
+  background:rgba(255,255,255,.05);border:.5px solid rgba(255,255,255,.1);
+  border-radius:10px;padding:8px 10px;transition:border-color .15s
+}
+.input-row:focus-within{border-color:rgba(74,222,128,.35)}
+#chat-input{
+  flex:1;background:none;border:none;outline:none;
+  font-size:12.5px;color:rgba(255,255,255,.82);
+  font-family:'DM Sans',sans-serif;resize:none;line-height:1.5;max-height:90px
+}
+#chat-input::placeholder{color:rgba(255,255,255,.2)}
+.send-btn{
+  width:27px;height:27px;border-radius:7px;background:#4ade80;
+  border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:background .15s
+}
+.send-btn:hover{background:#22c55e}
+.send-btn svg{width:13px;height:13px}
+
+/* ─── MAP ─── */
+.map-wrap{flex:1;position:relative;overflow:hidden}
+#map{width:100%;height:100%;background:#0a0c10}
+
+/* Leaflet dark override */
+.leaflet-container{background:#0a0c10}
+
+.map-topbar{
+  position:absolute;top:0;left:0;right:0;height:46px;
+  background:rgba(10,12,16,.75);backdrop-filter:blur(10px);
+  border-bottom:.5px solid rgba(255,255,255,.06);
+  display:flex;align-items:center;padding:0 14px;gap:10px;z-index:500
+}
+.loc-bar{
+  flex:1;display:flex;align-items:center;gap:7px;
+  background:rgba(255,255,255,.05);border:.5px solid rgba(255,255,255,.09);
+  border-radius:8px;padding:0 11px;height:30px
+}
+.loc-bar span{font-size:11.5px;color:rgba(255,255,255,.35)}
+.loc-bar .loc-val{color:rgba(255,255,255,.65);font-size:12px}
+.user-pill{
+  display:flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,.06);border:.5px solid rgba(255,255,255,.09);
+  border-radius:20px;padding:4px 11px 4px 5px;font-size:11px;color:rgba(255,255,255,.55)
+}
+.av{
+  width:20px;height:20px;border-radius:50%;
+  background:linear-gradient(135deg,#4ade80,#16a34a);
+  font-size:9px;font-weight:600;color:#052e16;
+  display:flex;align-items:center;justify-content:center
+}
+
+/* sidebar toggle on map */
+.map-sidebar-toggle{
+  position:absolute;left:14px;top:58px;z-index:500;
+  width:30px;height:30px;border-radius:8px;
+  background:rgba(10,12,16,.85);border:.5px solid rgba(255,255,255,.1);
+  display:flex;align-items:center;justify-content:center;
+  color:rgba(255,255,255,.5);font-size:14px;cursor:pointer;transition:all .15s
+}
+.map-sidebar-toggle:hover{background:rgba(30,35,45,.95);color:rgba(255,255,255,.8)}
+
+/* map zoom controls */
+.leaflet-control-zoom{border:none!important;box-shadow:none!important}
+.leaflet-control-zoom a{
+  background:rgba(10,12,16,.85)!important;border:.5px solid rgba(255,255,255,.1)!important;
+  color:rgba(255,255,255,.55)!important;font-size:16px!important;border-radius:8px!important;
+  margin-bottom:4px!important;display:flex!important;align-items:center!important;justify-content:center!important
+}
+.leaflet-control-zoom a:hover{background:rgba(30,35,45,.95)!important;color:rgba(255,255,255,.85)!important}
+.leaflet-control-attribution{display:none}
+
+/* legend */
+.map-legend{
+  position:absolute;bottom:14px;left:14px;z-index:500;
+  background:rgba(10,12,16,.88);border:.5px solid rgba(255,255,255,.09);
+  border-radius:9px;padding:9px 13px;font-size:10.5px;color:rgba(255,255,255,.4)
+}
+.leg-row{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+.leg-row:last-child{margin-bottom:0}
+.leg-dot{width:9px;height:9px;border-radius:50%}
+
+/* region highlight tooltip */
+.region-badge{
+  position:absolute;top:58px;right:14px;z-index:500;
+  background:rgba(74,222,128,.12);border:.5px solid rgba(74,222,128,.25);
+  border-radius:8px;padding:6px 12px;font-size:11px;color:#4ade80;
+  display:none;align-items:center;gap:6px
+}
+.region-badge.on{display:flex}
+
+/* custom pin styles */
+.pin-marker{
+  display:flex;flex-direction:column;align-items:center;cursor:pointer
+}
+.pin-body{
+  width:38px;height:38px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+  display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace
+}
+.pin-inner{transform:rotate(45deg);font-size:11px;font-weight:500}
+.pin-body.g{background:rgba(74,222,128,.92);box-shadow:0 0 16px rgba(74,222,128,.45)}
+.pin-body.y{background:rgba(250,204,21,.88);box-shadow:0 0 12px rgba(250,204,21,.35)}
+.pin-body.o{background:rgba(251,146,60,.88);box-shadow:0 0 10px rgba(251,146,60,.3)}
+.pin-inner.g{color:#052e16}
+.pin-inner.y{color:#1a1200}
+.pin-inner.o{color:#1a0800}
+.pin-lbl{
+  margin-top:5px;font-size:10px;color:rgba(255,255,255,.65);white-space:nowrap;
+  background:rgba(10,12,16,.88);padding:2px 7px;border-radius:5px;
+  border:.5px solid rgba(255,255,255,.09);font-family:'DM Sans',sans-serif
+}
+
+/* popup */
+.leaflet-popup-content-wrapper{
+  background:#13151c!important;border:.5px solid rgba(255,255,255,.1)!important;
+  border-radius:10px!important;box-shadow:0 4px 24px rgba(0,0,0,.6)!important;padding:0!important
+}
+.leaflet-popup-tip-container{display:none}
+.leaflet-popup-content{margin:0!important;padding:0!important}
+.popup-inner{padding:12px 14px;font-family:'DM Sans',sans-serif;min-width:200px}
+.popup-name{font-size:13px;font-weight:500;color:#fff;margin-bottom:4px}
+.popup-score{font-size:11px;color:#4ade80;font-family:'DM Mono',monospace;margin-bottom:8px}
+.popup-row{display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,.45);margin-bottom:3px}
+.popup-row span:last-child{color:rgba(255,255,255,.7)}
+.popup-btn{
+  margin-top:10px;width:100%;padding:6px;border-radius:7px;
+  background:rgba(74,222,128,.15);border:.5px solid rgba(74,222,128,.3);
+  color:#4ade80;font-size:11px;font-weight:500;cursor:pointer;
+  font-family:'DM Sans',sans-serif;transition:background .15s
+}
+.popup-btn:hover{background:rgba(74,222,128,.25)}
+
+/* modal backdrop */
+.modal-bg{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);
+  z-index:9000;align-items:center;justify-content:center
+}
+.modal-bg.on{display:flex}
+.modal{
+  background:#13151c;border:.5px solid rgba(255,255,255,.1);
+  border-radius:14px;width:420px;max-width:92vw;padding:24px;
+  font-family:'DM Sans',sans-serif
+}
+.modal h2{font-size:16px;font-weight:500;color:#fff;margin-bottom:6px}
+.modal p{font-size:12px;color:rgba(255,255,255,.4);margin-bottom:18px}
+.modal-btns{display:flex;gap:10px;margin-top:18px}
+.m-btn{
+  flex:1;padding:10px;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;
+  transition:all .15s;font-family:'DM Sans',sans-serif
+}
+.m-btn.primary{background:#4ade80;color:#052e16;border:none}
+.m-btn.primary:hover{background:#22c55e}
+.m-btn.ghost{background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);border:.5px solid rgba(255,255,255,.1)}
+.m-btn.ghost:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.85)}
+.modal-input{
+  width:100%;padding:10px 12px;border-radius:9px;
+  background:rgba(255,255,255,.05);border:.5px solid rgba(255,255,255,.1);
+  color:#fff;font-size:13px;outline:none;font-family:'DM Sans',sans-serif;
+  margin-bottom:10px
+}
+.modal-input:focus{border-color:rgba(74,222,128,.35)}
+.modal-input::placeholder{color:rgba(255,255,255,.2)}
+.modal-div{text-align:center;font-size:11px;color:rgba(255,255,255,.2);margin:12px 0}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ══ SIDEBAR ══ -->
+  <div class="sidebar" id="sidebar">
+
+    <div class="sb-header">
+      <div class="logo">p·<em>Pinpoint</em></div>
+      <div class="hdr-btns">
+        <div class="ico-btn" title="New chat" onclick="newChat()">+</div>
+        <div class="ico-btn" id="expand-btn" title="Expand" onclick="toggleExpand()">⇆</div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab on" id="tab-chat" onclick="switchTab('chat')">Chat</div>
+      <div class="tab" id="tab-hist" onclick="switchTab('history')">Saved</div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="history-panel" id="hist-panel">
+      <div class="hist-label">Previous sessions</div>
+      <div class="hist-list">
+        <div class="h-item" onclick="loadChat(0)">
+          <div class="h-title">Bubble tea shop · West LA</div>
+          <div class="h-meta">Today · 4 locations found</div>
+        </div>
+        <div class="h-item" onclick="loadChat(1)">
+          <div class="h-title">Fast casual restaurant · SoCal</div>
+          <div class="h-meta">Yesterday · High foot traffic zones</div>
+        </div>
+        <div class="h-item" onclick="loadChat(2)">
+          <div class="h-title">Retail boutique · Pacific Northwest</div>
+          <div class="h-meta">Mar 24 · 7 recommendations</div>
+        </div>
+        <div class="h-item" onclick="loadChat(3)">
+          <div class="h-title">Coffee shop · Denver metro</div>
+          <div class="h-meta">Mar 20 · 5 recommendations</div>
+        </div>
+        <div class="h-item" onclick="loadChat(4)">
+          <div class="h-title">Gym & fitness studio · Texas</div>
+          <div class="h-meta">Mar 18 · 3 locations found</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHAT -->
+    <div class="chat-panel" id="chat-panel">
+      <div class="msgs" id="msgs"></div>
+      <div class="input-wrap">
+        <div class="input-row">
+          <textarea id="chat-input" placeholder="Describe your business, region, budget..." rows="1"
+            onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+          <button class="send-btn" onclick="sendMsg()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- ══ MAP ══ -->
+  <div class="map-wrap">
+    <div id="map"></div>
+
+    <!-- top bar -->
+    <div class="map-topbar">
+      <div class="loc-bar">
+        <span>📍</span>
+        <span class="loc-val" id="loc-label">United States — all regions</span>
+      </div>
+      <div class="user-pill" id="user-pill" onclick="showLogin()" style="cursor:pointer">
+        <div class="av" id="av-circle">?</div>
+        <span id="user-name">Sign in</span>
+      </div>
+    </div>
+
+    <!-- sidebar toggle (when collapsed) -->
+    <div class="map-sidebar-toggle" id="sb-toggle" onclick="toggleSidebar()" style="display:none" title="Show chat">☰</div>
+
+    <!-- region badge -->
+    <div class="region-badge" id="region-badge">
+      <span>🗺</span><span id="region-text">Focused: SoCal</span>
+    </div>
+
+    <!-- legend -->
+    <div class="map-legend">
+      <div class="leg-row"><div class="leg-dot" style="background:#4ade80"></div>High match (80+)</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#facc15"></div>Moderate (65–79)</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#fb923c"></div>Lower (50–64)</div>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<!-- ══ LOGIN MODAL ══ -->
+<div class="modal-bg" id="login-modal">
+  <div class="modal">
+    <h2>Welcome to p·Pinpoint</h2>
+    <p>Sign in to save your sessions and action plans, or continue as a guest.</p>
+    <input class="modal-input" id="login-email" type="email" placeholder="Email address"/>
+    <input class="modal-input" type="password" placeholder="Password"/>
+    <div class="modal-btns">
+      <button class="m-btn primary" onclick="login()">Sign in</button>
+      <button class="m-btn ghost" onclick="continueGuest()">Continue as guest</button>
+    </div>
+    <div class="modal-div">— or —</div>
+    <button class="m-btn ghost" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="login()">
+      <svg width="14" height="14" viewBox="0 0 24 24"><path fill="#4ade80" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#4ade80" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#86efac" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#86efac" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Continue with Google
+    </button>
+  </div>
+</div>
+
+<script>
+window.onerror = function(msg, src, line) {
+  document.body.insertAdjacentHTML('afterbegin', `<div style="position:fixed;top:0;left:0;right:0;background:red;color:white;padding:8px;z-index:99999;font-size:13px">JS ERROR line ${line}: ${msg}</div>`);
+};
+// ─── STATE ───
+let map, markers=[], currentPins=[], expanded=false, sidebarVisible=true;
+let currentUser=null, currentRegion=null;
+let actionPlanData=null;
+let latestParsedProfile = null;
+
+// ─── MAP INIT ───
+map = L.map('map',{
+  center:[38.5,-96],zoom:4,minZoom:3,maxZoom:13,
+  zoomControl:false
+});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19,
+  attribution: '© OpenStreetMap contributors © CARTO'
+}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+// ─── INITIAL CHAT ───
+const INTRO=[
+  {r:'a',t:"Hey! I'm Pinpoint AI. Tell me about your business — what type, where you're thinking (or leave it open for all of USA), and your rough monthly rent budget. I'll surface the best locations on the map."}
+];
+initChat(INTRO);
+
+function initChat(msgs){
+  const el=document.getElementById('msgs');
+  el.innerHTML='';
+  msgs.forEach(m=>appendBubble(m.r,m.t,false));
+}
+
+// ─── REGIONS MAP ───
+const REGIONS={
+  'socal':{label:'Southern California',center:[34.05,-118.2],zoom:8},
+  'southern california':{label:'Southern California',center:[34.05,-118.2],zoom:8},
+  'la':{label:'Los Angeles',center:[34.05,-118.25],zoom:10},
+  'los angeles':{label:'Los Angeles',center:[34.05,-118.25],zoom:10},
+  'norcal':{label:'Northern California',center:[37.7,-122],zoom:8},
+  'bay area':{label:'Bay Area',center:[37.75,-122.2],zoom:10},
+  'western':{label:'Western USA',center:[39,-114],zoom:5},
+  'west coast':{label:'West Coast',center:[40,-122],zoom:5},
+  'pacific northwest':{label:'Pacific Northwest',center:[47.5,-121],zoom:7},
+  'seattle':{label:'Seattle',center:[47.6,-122.33],zoom:11},
+  'texas':{label:'Texas',center:[31.5,-99],zoom:6},
+  'nyc':{label:'New York City',center:[40.72,-73.99],zoom:11},
+  'new york':{label:'New York',center:[40.72,-73.99],zoom:10},
+  'chicago':{label:'Chicago',center:[41.85,-87.65],zoom:10},
+  'midwest':{label:'Midwest',center:[41.5,-91],zoom:5},
+  'southeast':{label:'Southeast',center:[33,-85],zoom:5},
+  'florida':{label:'Florida',center:[27.5,-81.5],zoom:6},
+  'miami':{label:'Miami',center:[25.77,-80.2],zoom:11},
+  'northeast':{label:'Northeast',center:[42,-72],zoom:6},
+  'denver':{label:'Denver',center:[39.73,-104.98],zoom:11},
+  'southwest':{label:'Southwest',center:[34,-111],zoom:5},
+  'phoenix':{label:'Phoenix',center:[33.45,-112.07],zoom:11},
+};
+
+function detectRegion(text){
+  const t=text.toLowerCase();
+  for(const k of Object.keys(REGIONS)){
+    if(t.includes(k)) return k;
+  }
+  return null;
+}
+
+async function parseBusinessWithBackend(text) {
+  const response = await fetch("http://localhost:5001/parse-business", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ message: text })
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to parse business message");
+  }
+
+  return await response.json();
+}
+
+// ─── SCENARIO RESPONSES ───
+const SCENARIOS=[
+  {
+    keywords:['bubble tea','boba'],
+    pins:[
+      {lat:34.027,lng:-118.48,score:91,name:'Sawtelle Blvd',rent:'$3,200/mo',traffic:'High',comp:'2 nearby'},
+      {lat:33.99,lng:-118.4,score:74,name:'Palms District',rent:'$2,800/mo',traffic:'Medium',comp:'0 nearby'},
+      {lat:33.99,lng:-118.47,score:68,name:'Venice Blvd',rent:'$2,600/mo',traffic:'Medium',comp:'1 nearby'},
+    ],
+    chips:['Sawtelle Blvd','Palms District','Venice Blvd'],
+    reply:"Analyzed 340 census tracts across your region. Bubble tea demand correlates strongly with Asian food corridors and college-age density (18–24). Top 3 spots pinned on the map.",
+    plan:{
+      title:"Action Plan — Bubble Tea Shop",
+      summary:"Sawtelle Blvd scores highest at 91/100. Strong Asian food corridor, UCLA foot traffic 0.8mi away, average rent ~$3,200/mo within budget.",
+      steps:["Visit Sawtelle Tue–Thu 11am–2pm to observe foot traffic patterns","Check vacancy at 2040–2100 Sawtelle Blvd block","Research Palms District as low-competition alternative (0 boba competitors within 0.5mi)","Avoid Venice Blvd — existing competitor has strong Yelp presence"],
+      region:"West Los Angeles, CA"
+    }
+  },
+  {
+    keywords:['coffee','cafe','café'],
+    pins:[
+      {lat:39.74,lng:-104.98,score:88,name:'RiNo Art District',rent:'$3,800/mo',traffic:'High',comp:'3 nearby'},
+      {lat:39.72,lng:-104.97,score:77,name:'Capitol Hill',rent:'$2,900/mo',traffic:'Medium',comp:'2 nearby'},
+      {lat:39.75,lng:-105.01,score:65,name:'Highland',rent:'$3,200/mo',traffic:'Medium',comp:'4 nearby'},
+    ],
+    chips:['RiNo Art District','Capitol Hill','Highland'],
+    reply:"Coffee demand peaks in creative/professional districts. Analyzed 280 tracts — RiNo has fastest-growing 25–40 demographic in Denver metro, lowest saturation relative to foot traffic.",
+    plan:{
+      title:"Action Plan — Coffee Shop",
+      summary:"RiNo Art District leads at 88/100. Rapidly gentrifying, strong weekday morning commuter traffic, adjacent to creative office clusters.",
+      steps:["Scout 25th–28th St corridor in RiNo for available retail","Verify morning foot traffic before 9am on weekdays","Capitol Hill viable if budget is priority — $900/mo savings vs RiNo","Avoid Highland — 4 established competitors within 0.3mi"],
+      region:"Denver, CO"
+    }
+  },
+  {
+    keywords:['restaurant','food','dining','fast casual','pizza'],
+    pins:[
+      {lat:37.78,lng:-122.41,score:85,name:'Mission District',rent:'$4,800/mo',traffic:'Very High',comp:'High density'},
+      {lat:37.77,lng:-122.43,score:79,name:'Noe Valley',rent:'$3,600/mo',traffic:'High',comp:'Medium'},
+      {lat:37.76,lng:-122.45,score:71,name:'Inner Sunset',rent:'$3,100/mo',traffic:'Medium',comp:'Low'},
+    ],
+    chips:['Mission District','Noe Valley','Inner Sunset'],
+    reply:"Fast casual performs best in high foot traffic corridors with lunch-hour populations. Analyzed SF neighborhoods across income, density, and competitive landscape.",
+    plan:{
+      title:"Action Plan — Restaurant",
+      summary:"Mission District leads at 85/100 for foot traffic, though rent exceeds target. Noe Valley offers strong lunch crowd at better economics.",
+      steps:["Evaluate Noe Valley for best rent-to-traffic ratio","Survey Mission lunch crowd 11:30am–1:30pm on weekdays","Inner Sunset — lower competition, strong neighborhood loyalty","Request commercial vacancy data from SF Planning Dept"],
+      region:"San Francisco, CA"
+    }
+  },
+  {
+    keywords:['retail','boutique','clothing','fashion','shop','store'],
+    pins:[
+      {lat:47.61,lng:-122.34,score:87,name:'Capitol Hill, Seattle',rent:'$3,400/mo',traffic:'High',comp:'2 nearby'},
+      {lat:47.62,lng:-122.32,score:73,name:'Fremont',rent:'$2,700/mo',traffic:'Medium',comp:'1 nearby'},
+      {lat:47.60,lng:-122.33,score:66,name:'First Hill',rent:'$2,500/mo',traffic:'Medium',comp:'0 nearby'},
+    ],
+    chips:['Capitol Hill','Fremont','First Hill'],
+    reply:"Retail boutiques thrive in walkable neighborhoods with 25–40 demographic, above-median income, and low e-commerce substitution. Seattle's Capitol Hill is your top match.",
+    plan:{
+      title:"Action Plan — Retail Boutique",
+      summary:"Capitol Hill leads at 87/100. High walkability score (92), dense 28–38 demographic, strong independent retail culture.",
+      steps:["Walk E Pike & E Pine St for available storefronts","Fremont good secondary option — creative community, lower rent","First Hill underdeveloped retail — first-mover opportunity","Avoid downtown Seattle — high vacancy, shifting foot traffic"],
+      region:"Seattle, WA"
+    }
+  },
+  {
+    keywords:['gym','fitness','yoga','studio','workout'],
+    pins:[
+      {lat:30.27,lng:-97.74,score:83,name:'South Congress, Austin',rent:'$3,100/mo',traffic:'High',comp:'2 nearby'},
+      {lat:30.29,lng:-97.73,score:76,name:'East Austin',rent:'$2,600/mo',traffic:'Medium',comp:'1 nearby'},
+      {lat:30.26,lng:-97.76,score:62,name:'Zilker',rent:'$2,900/mo',traffic:'Medium',comp:'3 nearby'},
+    ],
+    chips:['South Congress','East Austin','Zilker'],
+    reply:"Fitness studios perform best in active-lifestyle neighborhoods with health-conscious 25–45 demographic. Austin's South Congress has the highest gym spend per capita in the region.",
+    plan:{
+      title:"Action Plan — Gym / Fitness Studio",
+      summary:"South Congress leads at 83/100. Strong fitness culture, nearby Barton Creek Greenbelt drives active lifestyle demographic.",
+      steps:["Scout S Congress Ave between E Oltorf and E Slaughter for retail","East Austin — rapidly growing, lower rent, younger demographic","Research boutique studio saturation before committing","Consider pop-up or studio share to test demand first"],
+      region:"Austin, TX"
+    }
+  }
+];
+
+function matchScenario(text){
+  const t=text.toLowerCase();
+  for(const s of SCENARIOS){
+    if(s.keywords.some(k=>t.includes(k))) return s;
+  }
+  return null;
+}
+
+// ─── GENERIC RESPONSE ───
+function genericResponse(text){
+  const t=text.toLowerCase();
+  // competitor question
+  if(t.includes('competitor')||t.includes('competition')){
+    return{type:'text',msg:"Updated the map to highlight lower-competition zones. The orange pin areas have ≤1 competitor within 0.5mi — strong first-mover opportunity."}
+  }
+  if(t.includes('cheaper')||t.includes('budget')||t.includes('afford')){
+    return{type:'text',msg:"Filtering for locations under your budget. The lower-scored pins offer the best rent-to-traffic ratio. Want me to zoom into any specific area?"}
+  }
+  if(t.includes('demographic')||t.includes('age')||t.includes('income')){
+    return{type:'text',msg:"Overlaying demographic data — age distribution, median HH income, and daytime population density across the pinned zones. The green pin areas index highest on your target customer profile."}
+  }
+  return{type:'text',msg:"Got it. Updating the map based on your input. Let me know if you'd like to drill into foot traffic, demographics, or competitive data for any specific pin."}
+}
+
+// ─── SEND MESSAGE ───
+async function sendMsg() {
+  const inp = document.getElementById('chat-input');
+  const text = inp.value.trim();
+  if (!text) return;
+
+  inp.value = '';
+  inp.style.height = '';
+  appendBubble('u', text, true);
+  showTyping();
+
+  try {
+    const parsed = await parseBusinessWithBackend(text);
+    latestParsedProfile = parsed;
+
+    removeTyping();
+
+    // region handling
+    if (parsed.region) {
+      const regionKey = parsed.region.toLowerCase();
+      if (REGIONS[regionKey]) {
+        const r = REGIONS[regionKey];
+        currentRegion = r.label;
+        map.flyTo(r.center, r.zoom, { duration: 1.4 });
+        document.getElementById('loc-label').textContent = 'Focused: ' + r.label;
+        document.getElementById('region-badge').classList.add('on');
+        document.getElementById('region-text').textContent = 'Focused: ' + r.label;
+      }
+    }
+
+    // Show parsed summary in chat
+    let summary = `Got it — I parsed this as a ${parsed.business_type || 'business'}`
+    if (parsed.region) summary += ` in ${parsed.region}`;
+    if (parsed.employee_count) summary += ` with ${parsed.employee_count} employees`;
+    if (parsed.valuation_usd) summary += ` and valuation around $${parsed.valuation_usd.toLocaleString()}`;
+    if (parsed.monthly_rent_budget_usd) summary += `. Budget: ~$${parsed.monthly_rent_budget_usd.toLocaleString()}/month`;
+    summary += `.`;
+
+    appendBubble('a', summary, true);
+
+    if (!parsed.priorities_known) {
+      renderPriorityChoices(parsed);
+      return;
+    }
+
+    appendBubble('a', 'Thanks — I have enough to start surfacing recommendations next.', true);
+
+  } catch (err) {
+    removeTyping();
+    console.error(err);
+    appendBubble('a', 'Sorry — I had trouble parsing that. Please try again.', true);
+  }
+}
+
+// ─── DOWNLOAD ACTION PLAN ───
+function downloadPlan(){
+  if(!actionPlanData){
+    alert('Start a location search first to generate a plan.');return;
+  }
+  const d=actionPlanData;
+  const date=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  const steps=d.steps.map((s,i)=>`${i+1}. ${s}`).join('\n');
+  const content=`p·PINPOINT — LOCATION ACTION PLAN
+Generated: ${date}
+Region: ${d.region}
+${'─'.repeat(50)}
+
+${d.title.toUpperCase()}
+
+SUMMARY
+${d.summary}
+
+RECOMMENDED NEXT STEPS
+${steps}
+
+${'─'.repeat(50)}
+Powered by p·Pinpoint · AI-driven location intelligence
+`;
+  const blob=new Blob([content],{type:'text/plain'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='pinpoint-action-plan.txt';
+  document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(url);
+}
+
+// ─── UI HELPERS ───
+function appendBubble(role,text,animate){
+  const msgs=document.getElementById('msgs');
+  const div=document.createElement('div');
+  div.className=`msg ${role}`;
+  div.innerHTML=role==='a'?`<div class="ai-tag">Pinpoint AI</div><div class="bubble">${text}</div>`:`<div class="bubble">${text}</div>`;
+  if(animate) div.style.opacity='0',div.style.transition='opacity .3s',setTimeout(()=>div.style.opacity='1',30);
+  msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;
+}
+
+function appendRich(role,text,chips,card){
+  const msgs=document.getElementById('msgs');
+  const div=document.createElement('div');
+  div.className=`msg ${role}`;
+  div.innerHTML=`<div class="ai-tag">Pinpoint AI</div><div class="bubble">${text}</div><div class="pin-chips">${chips}</div>${card}`;
+  div.style.opacity='0';div.style.transition='opacity .3s';
+  msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;
+  setTimeout(()=>div.style.opacity='1',30);
+}
+
+function renderPriorityChoices(parsed) {
+  const chips = parsed.suggested_priorities.map((priority, index) => {
+    const label = ["A", "B", "C"][index];
+    return `<div class="chip" onclick="selectPriority('${priority.replace(/'/g, "\\'")}')">${label}. ${priority}</div>`;
+  }).join("");
+
+  appendRich(
+    'a',
+    parsed.follow_up_question || "Choose a priority:",
+    chips,
+    ""
+  );
+}
+
+async function selectPriority(priority) {
+  if (!latestParsedProfile) return;
+
+  latestParsedProfile.priorities_known = true;
+  latestParsedProfile.user_priorities = [priority];
+
+  appendBubble('u', priority, true);
+  showTyping();
+
+  try {
+    const res = await fetch('http://localhost:5001/recommend', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(latestParsedProfile)
+    });
+    const data = await res.json();
+    removeTyping();
+
+    appendBubble('a', `Got it — surfacing the best locations for ${priority.toLowerCase()} on the map.`, true);
+
+    clearPins();
+    data.recommendations.forEach(rec => {
+      const cls = rec.score >= 80 ? 'g' : rec.score >= 65 ? 'y' : 'o';
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="pin-marker"><div class="pin-body ${cls}"><span class="pin-inner ${cls}">${rec.score}</span></div><div class="pin-lbl">${rec.name}</div></div>`,
+        iconAnchor: [19, 38]
+      });
+      const m = L.marker([rec.lat, rec.lng], {icon}).addTo(map);
+      markers.push(m);
+    });
+
+    if (data.recommendations.length) {
+      const first = data.recommendations[0];
+      map.flyTo([first.lat, first.lng], 8, {duration: 1.5});
+    }
+  } catch (err) {
+    removeTyping();
+    appendBubble('a', 'Had trouble fetching recommendations. Is the server running?', true);
+  }
+}
+
+let typingEl=null;
+function showTyping(){
+  const msgs=document.getElementById('msgs');
+  typingEl=document.createElement('div');
+  typingEl.className='msg a';
+  typingEl.innerHTML='<div class="ai-tag">Pinpoint AI</div><div class="bubble"><div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>';
+  msgs.appendChild(typingEl);msgs.scrollTop=msgs.scrollHeight;
+}
+function removeTyping(){if(typingEl){typingEl.remove();typingEl=null;}}
+
+function clearPins(){markers.forEach(m=>map.removeLayer(m));markers=[];}
+
+function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}}
+function autoResize(el){el.style.height='';el.style.height=Math.min(el.scrollHeight,90)+'px';}
+
+// ─── EXPAND / COLLAPSE ───
+function toggleExpand(){
+  expanded=!expanded;
+  document.getElementById('sidebar').classList.toggle('expanded',expanded);
+  document.getElementById('map').parentElement.style.display=expanded?'none':'';
+  document.getElementById('expand-btn').classList.toggle('active',expanded);
+  document.getElementById('expand-btn').textContent=expanded?'⇤':'⇆';
+}
+
+function toggleSidebar(){
+  sidebarVisible=!sidebarVisible;
+  document.getElementById('sidebar').classList.toggle('collapsed',!sidebarVisible);
+  document.getElementById('sb-toggle').style.display=sidebarVisible?'none':'flex';
+}
+
+// tab switch
+function switchTab(tab){
+  document.getElementById('tab-chat').classList.toggle('on',tab==='chat');
+  document.getElementById('tab-hist').classList.toggle('on',tab==='history');
+  document.getElementById('chat-panel').classList.toggle('off',tab!=='chat');
+  document.getElementById('hist-panel').classList.toggle('on',tab==='history');
+}
+
+function loadChat(i){
+  switchTab('chat');
+  const titles=["Bubble tea shop · West LA","Fast casual restaurant · SoCal","Retail boutique · Pacific Northwest","Coffee shop · Denver metro","Gym & fitness studio · Texas"];
+  initChat([{r:'a',t:`Loading session: "${titles[i]}". This would restore your full chat history and map pins.`}]);
+}
+
+function newChat(){
+  clearPins();
+  currentRegion=null;
+  actionPlanData=null;
+  document.getElementById('region-badge').classList.remove('on');
+  document.getElementById('loc-label').textContent='United States — all regions';
+  map.flyTo([38.5,-96],4,{duration:1});
+  initChat([{r:'a',t:"New session started. Tell me about your business — type, location preferences (or leave it open), and budget. I'll find the best spots on the map."}]);
+  if(document.getElementById('tab-hist').classList.contains('on')) switchTab('chat');
+}
+
+// ─── LOGIN ───
+function showLogin(){document.getElementById('login-modal').classList.add('on');}
+function login(){
+  const email=document.getElementById('login-email').value||'user@example.com';
+  const name=email.split('@')[0];
+  document.getElementById('user-name').textContent=name;
+  document.getElementById('av-circle').textContent=name[0].toUpperCase();
+  document.getElementById('login-modal').classList.remove('on');
+  currentUser=name;
+}
+function continueGuest(){
+  document.getElementById('user-name').textContent='Guest';
+  document.getElementById('av-circle').textContent='G';
+  document.getElementById('av-circle').style.background='linear-gradient(135deg,#888,#555)';
+  document.getElementById('login-modal').classList.remove('on');
+}
+document.getElementById('login-modal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('on');});
+
+// auto-show login
+setTimeout(()=>document.getElementById('login-modal').classList.add('on'),600);
+</script>
+</body>
+</html>

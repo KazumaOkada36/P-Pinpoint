@@ -1,0 +1,7 @@
+config.js
+archive/
+node_modules/
+secrets.env
+__pycache__/
+static/
+*.pyc
