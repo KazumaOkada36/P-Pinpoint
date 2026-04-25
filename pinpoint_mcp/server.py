@@ -26,6 +26,8 @@ Add to Claude Desktop config (claude_desktop_config.json):
   }
 """
 
+from typing import Iterable, Sequence
+
 try:
     from mcp.server.fastmcp import FastMCP
 except ModuleNotFoundError:
@@ -45,17 +47,17 @@ except ModuleNotFoundError:
                 "to run the MCP transport."
             )
 
-from .data.loader import load_raw, YEARS, get_timeseries
+from .data.loader import load_raw, YEARS
 from .data.features import compute_feature_matrix
 from .data.business_map import normalize_business_type, normalize_priority, BUSINESS_PROFILES
-from .data.regions import resolve_region, get_region_label, STATE_NAME_TO_ABBR
+from .data.regions import STATE_NAME_TO_ABBR
 from .engine.ranker import rank_locations
 from .engine.scorer import score_county
 from .engine.explainer import explain_score
 
 mcp = FastMCP(
     name="Pinpoint Recommendation Engine",
-    description=(
+    instructions=(
         "AI-powered business location advisor. "
         "Uses BEA county-level GDP data (2001–2024) across all 50 US states "
         "to score and rank counties for any business type."
@@ -69,7 +71,7 @@ mcp = FastMCP(
 def recommend_locations(
     business_type: str,
     region: str = "",
-    priorities: list[str] = [],
+    priorities: list[str] | None = None,
     top_n: int = 10,
 ) -> dict:
     """
@@ -100,11 +102,12 @@ def recommend_locations(
           ]
         }
     """
-    top_n = min(max(1, top_n), 50)
+    cleaned_priorities = _clean_priorities(priorities)
+    top_n = _coerce_top_n(top_n)
     return rank_locations(
         business_type_raw=business_type,
         region_str=region or None,
-        priorities=priorities,
+        priorities=cleaned_priorities,
         top_n=top_n,
     )
 
@@ -116,7 +119,7 @@ def analyze_county(
     county_name: str,
     state: str,
     business_type: str = "cafe",
-    priorities: list[str] = [],
+    priorities: list[str] | None = None,
 ) -> dict:
     """
     Deep-dive analysis of a specific county for a given business type.
@@ -133,26 +136,15 @@ def analyze_county(
     """
     matrix = compute_feature_matrix()
     state_upper = state.strip().upper()
+    cleaned_priorities = _clean_priorities(priorities)
 
-    # Find matching county (case-insensitive partial match)
-    target = county_name.strip().lower()
-    matches = [
-        (fips, feat)
-        for fips, feat in matrix.items()
-        if feat["state"] == state_upper
-        and feat.get("county", "").lower().startswith(target)
-    ]
+    match_result = _find_county_match(matrix, county_name, state_upper)
+    if "error" in match_result:
+        return match_result
 
-    if not matches:
-        return {
-            "error": f"No county found matching '{county_name}' in {state}. "
-                     f"Check spelling or try a broader name.",
-            "hint": f"Available states: {', '.join(sorted(set(f['state'] for f in matrix.values())))}",
-        }
-
-    geofips, geo_feat = matches[0]
+    geofips, geo_feat = match_result["match"]
     btype = normalize_business_type(business_type)
-    score_result = score_county(geo_feat, btype, priorities)
+    score_result = score_county(geo_feat, btype, cleaned_priorities)
 
     # Build full industry breakdown
     industries_out = {}
@@ -171,7 +163,7 @@ def analyze_county(
         score_result["weights"],
         geo_feat,
         btype,
-        priorities,
+        cleaned_priorities,
     )
 
     return {
@@ -225,21 +217,24 @@ def get_industry_trends(
                      "'accommodation and food services', or a numeric linecode (1-92)."
         }
 
-    raw = load_raw()
     state_upper = state.strip().upper()
+    raw = load_raw()
 
     if county:
-        target = county.strip().lower()
-        matches = [
-            (fips, geo)
+        county_rows = {
+            fips: {
+                "county": geo.get("county"),
+                "state": geo["state_abbr"],
+                "geoname": geo["geoname"],
+            }
             for fips, geo in raw.items()
-            if geo["state_abbr"] == state_upper
-            and geo["is_county"]
-            and (geo.get("county") or "").lower().startswith(target)
-        ]
-        if not matches:
-            return {"error": f"County '{county}' not found in {state}."}
-        geofips, geo = matches[0]
+            if geo["is_county"]
+        }
+        match_result = _find_county_match(county_rows, county, state_upper)
+        if "error" in match_result:
+            return {"error": match_result["error"], **({"suggestions": match_result["suggestions"]} if "suggestions" in match_result else {})}
+        geofips, _ = match_result["match"]
+        geo = raw[geofips]
     else:
         # State-level row
         matches = [
@@ -292,7 +287,7 @@ def get_industry_trends(
 def compare_locations(
     locations: list[dict],
     business_type: str,
-    priorities: list[str] = [],
+    priorities: list[str] | None = None,
 ) -> dict:
     """
     Score and compare a list of specific counties side by side.
@@ -310,35 +305,30 @@ def compare_locations(
 
     matrix = compute_feature_matrix()
     btype = normalize_business_type(business_type)
+    cleaned_priorities = _clean_priorities(priorities)
     results = []
 
     for loc in locations:
-        cname = loc.get("county", "").strip().lower()
-        sname = loc.get("state", "").strip().upper()
-
-        matches = [
-            (fips, feat)
-            for fips, feat in matrix.items()
-            if feat["state"] == sname
-            and (feat.get("county") or "").lower().startswith(cname)
-        ]
-
-        if not matches:
-            results.append({
+        match_result = _find_county_match(matrix, loc.get("county", ""), loc.get("state", ""))
+        if "error" in match_result:
+            err = {
                 "county":  loc.get("county"),
                 "state":   loc.get("state"),
-                "error":   "Not found in dataset.",
-            })
+                "error":   match_result["error"],
+            }
+            if "suggestions" in match_result:
+                err["suggestions"] = match_result["suggestions"]
+            results.append(err)
             continue
 
-        geofips, geo_feat = matches[0]
-        score_result = score_county(geo_feat, btype, priorities)
+        geofips, geo_feat = match_result["match"]
+        score_result = score_county(geo_feat, btype, cleaned_priorities)
         explanation = explain_score(
             score_result["breakdown"],
             score_result["weights"],
             geo_feat,
             btype,
-            priorities,
+            cleaned_priorities,
         )
         results.append({
             "county":      geo_feat["county"],
@@ -356,7 +346,7 @@ def compare_locations(
 
     return {
         "business_type": btype,
-        "priorities":    priorities,
+        "priorities":    cleaned_priorities,
         "comparison":    results,
     }
 
@@ -403,7 +393,7 @@ def list_supported_regions() -> dict:
         "states": states_list,
         "supported_metros": metros,
         "broad_regions": broad_regions,
-        "business_types": list(BUSINESS_PROFILES.keys()),
+        "business_types": sorted(BUSINESS_PROFILES.keys()),
         "priority_options": [
             "foot traffic",
             "affordable rent",
@@ -470,6 +460,96 @@ def _resolve_linecode(industry: str) -> int | None:
         pass
     # Try keyword map
     return _INDUSTRY_KEYWORD_MAP.get(s.lower())
+
+
+def _coerce_top_n(top_n: int) -> int:
+    try:
+        value = int(top_n)
+    except (TypeError, ValueError):
+        value = 10
+    return min(max(1, value), 50)
+
+
+def _clean_priorities(priorities: Sequence[str] | None) -> list[str]:
+    if not priorities:
+        return []
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in priorities:
+        if not isinstance(raw, str):
+            continue
+        normalized = normalize_priority(raw)
+        if normalized == "default":
+            continue
+        if normalized not in seen:
+            seen.add(normalized)
+            cleaned.append(normalized)
+    return cleaned
+
+
+def _find_county_match(matrix: dict, county_name: str, state: str) -> dict:
+    state_upper = (state or "").strip().upper()
+    target = (county_name or "").strip().lower()
+    if not target:
+        return {"error": "County name is required."}
+    if not state_upper:
+        return {"error": "State is required."}
+
+    state_rows = [
+        (fips, feat)
+        for fips, feat in matrix.items()
+        if feat.get("state") == state_upper
+    ]
+    if not state_rows:
+        available_states = sorted({feat.get("state") for feat in matrix.values() if feat.get("state")})
+        return {
+            "error": f"State '{state}' not found.",
+            "suggestions": available_states[:10],
+        }
+
+    exact = [row for row in state_rows if (row[1].get("county") or "").lower() == target]
+    if len(exact) == 1:
+        return {"match": exact[0]}
+
+    prefix = [row for row in state_rows if (row[1].get("county") or "").lower().startswith(target)]
+    if len(prefix) == 1:
+        return {"match": prefix[0]}
+    if len(prefix) > 1:
+        return {
+            "error": f"County name '{county_name}' is ambiguous in {state_upper}.",
+            "suggestions": _county_suggestions(prefix),
+        }
+
+    contains = [row for row in state_rows if target in (row[1].get("county") or "").lower()]
+    if len(contains) == 1:
+        return {"match": contains[0]}
+    if len(contains) > 1:
+        return {
+            "error": f"County name '{county_name}' is ambiguous in {state_upper}.",
+            "suggestions": _county_suggestions(contains),
+        }
+
+    return {
+        "error": f"No county found matching '{county_name}' in {state_upper}. Check spelling or try a broader name.",
+        "suggestions": _county_suggestions(state_rows),
+    }
+
+
+def _county_suggestions(rows: Iterable[tuple[str, dict]], limit: int = 8) -> list[str]:
+    names = []
+    seen = set()
+    for _, feat in rows:
+        county = feat.get("county")
+        state = feat.get("state")
+        if not county or not state:
+            continue
+        label = f"{county}, {state}"
+        if label not in seen:
+            seen.add(label)
+            names.append(label)
+        if len(names) >= limit:
+            break
+    return names
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
