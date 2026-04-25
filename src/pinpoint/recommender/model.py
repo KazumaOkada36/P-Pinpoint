@@ -10,7 +10,7 @@ import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import MinMaxScaler
 
-from pinpoint.recommender.features import build_query_vector
+from pinpoint.recommender.features import build_query_vector, FEATURE_LABELS
 
 
 @dataclass
@@ -19,24 +19,30 @@ class Recommendation:
     state: str
     state_name: str
     score: float
-    top_features: list[tuple[str, float]]  # (feature_name, normalized_value)
+    # (feature_name, normalized_value, pct_contribution)
+    top_features: list[tuple[str, float, float]] = field(default_factory=list)
+
+    def feature_summary(self) -> str:
+        """Human-readable summary of top contributing features."""
+        parts = []
+        for feat, val, pct in self.top_features:
+            label = FEATURE_LABELS.get(feat, feat.replace("_", " ").title())
+            parts.append(f"{label} ({pct:.0f}% weight)")
+        return "; ".join(parts) if parts else "general economic strength"
 
 
 class LocationRecommender:
-    """Scikit-learn cosine similarity recommender over state GDP features."""
+    """Cosine-similarity recommender over state GDP features."""
 
     def __init__(self) -> None:
         self._scaler = MinMaxScaler()
         self._feature_matrix: Optional[np.ndarray] = None
         self._feature_columns: list[str] = []
-        self._state_index: list[str] = []      # state abbreviations
+        self._state_index: list[str] = []
         self._state_names: dict[str, str] = {}
         self._fitted = False
 
-    # ------------------------------------------------------------------
     def fit(self, feature_df: pd.DataFrame) -> "LocationRecommender":
-        """Fit the recommender on a feature DataFrame (output of build_feature_matrix)."""
-        # Drop non-numeric or metadata columns
         drop_cols = ["state_name"]
         numeric_df = feature_df.drop(columns=[c for c in drop_cols if c in feature_df.columns])
         numeric_df = numeric_df.select_dtypes(include=[np.number]).fillna(0.0)
@@ -53,25 +59,23 @@ class LocationRecommender:
         self._fitted = True
         return self
 
-    # ------------------------------------------------------------------
     def recommend(
         self,
         priorities: list[str],
         top_n: int = 5,
         preferred_region: Optional[str] = None,
     ) -> list[Recommendation]:
-        """Return top_n state recommendations for the given priorities."""
         if not self._fitted or self._feature_matrix is None:
             raise RuntimeError("Model not fitted. Run `pinpoint train` first.")
 
         query = build_query_vector(priorities, self._feature_columns)
-
-        # Normalise query vector to same scale
         query_scaled = self._scaler.transform(query.reshape(1, -1))
         scores = cosine_similarity(query_scaled, self._feature_matrix)[0]
 
-        # Sort descending
         ranked_idx = np.argsort(scores)[::-1]
+
+        # Normalise contribution percentages across all features
+        total_query_weight = query.sum() or 1.0
 
         results: list[Recommendation] = []
         rank = 1
@@ -81,14 +85,20 @@ class LocationRecommender:
             state = self._state_index[idx]
             score = float(scores[idx])
 
-            # Top contributing features for this state
             state_vec = self._feature_matrix[idx]
-            weighted = query * state_vec  # element-wise contribution
-            top_feat_idx = np.argsort(weighted)[::-1][:3]
+            # Contribution = query_weight * state_value
+            contributions = query * state_vec
+            total_contribution = contributions.sum() or 1.0
+
+            top_feat_idx = np.argsort(contributions)[::-1][:3]
             top_features = [
-                (self._feature_columns[i], float(state_vec[i]))
+                (
+                    self._feature_columns[i],
+                    float(state_vec[i]),
+                    float(contributions[i] / total_contribution * 100),
+                )
                 for i in top_feat_idx
-                if weighted[i] > 0
+                if contributions[i] > 0
             ]
 
             results.append(
@@ -104,7 +114,6 @@ class LocationRecommender:
 
         return results
 
-    # ------------------------------------------------------------------
     @property
     def is_fitted(self) -> bool:
         return self._fitted

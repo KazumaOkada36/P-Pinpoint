@@ -88,7 +88,7 @@ html,body{height:100%;overflow:hidden;background:#0a0c10;font-family:'DM Sans',s
   border:.5px solid rgba(74,222,128,.22);border-bottom-right-radius:3px
 }
 .msg.a .bubble{
-  background:rgba(255,255,255,.05);color:rgba(255,255,255,.8);
+  background:rgba(21, 13, 13, 0.05);color:rgba(255,255,255,.8);
   border:.5px solid rgba(255,255,255,.08);border-bottom-left-radius:3px
 }
 .typing{display:flex;gap:4px;padding:10px 12px}
@@ -609,15 +609,22 @@ async function sendMsg() {
   inp.value = '';
   inp.style.height = '';
   appendBubble('u', text, true);
+
+  // If we already have a complete profile, just do generic response
+  if (latestParsedProfile && latestParsedProfile.priorities_known) {
+    const r = genericResponse(text);
+    appendBubble('a', r.msg, true);
+    return;
+  }
+
   showTyping();
 
   try {
     const parsed = await parseBusinessWithBackend(text);
     latestParsedProfile = parsed;
-
     removeTyping();
 
-    // region handling
+    // Region handling
     if (parsed.region) {
       const regionKey = parsed.region.toLowerCase();
       if (REGIONS[regionKey]) {
@@ -630,22 +637,49 @@ async function sendMsg() {
       }
     }
 
-    // Show parsed summary in chat
-    let summary = `Got it — I parsed this as a ${parsed.business_type || 'business'}`
+    // Build summary message
+    let summary = `Got it — I parsed this as a ${parsed.business_type || 'business'}`;
     if (parsed.region) summary += ` in ${parsed.region}`;
     if (parsed.employee_count) summary += ` with ${parsed.employee_count} employees`;
-    if (parsed.valuation_usd) summary += ` and valuation around $${parsed.valuation_usd.toLocaleString()}`;
     if (parsed.monthly_rent_budget_usd) summary += `. Budget: ~$${parsed.monthly_rent_budget_usd.toLocaleString()}/month`;
-    summary += `.`;
+    summary += '.';
 
     appendBubble('a', summary, true);
 
     if (!parsed.priorities_known) {
       renderPriorityChoices(parsed);
-      return;
+    } else {
+      // Priorities already stated, go straight to recommend
+      showTyping();
+      try {
+        const res = await fetch('http://localhost:5001/recommend', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(parsed)
+        });
+        const data = await res.json();
+        removeTyping();
+        appendBubble('a', `Got it — surfacing the best locations on the map.`, true);
+        clearPins();
+        data.recommendations.forEach(rec => {
+          const cls = rec.score >= 80 ? 'g' : rec.score >= 65 ? 'y' : 'o';
+          const icon = L.divIcon({
+            className: '',
+            html: `<div class="pin-marker"><div class="pin-body ${cls}"><span class="pin-inner ${cls}">${rec.score}</span></div><div class="pin-lbl">${rec.name}</div></div>`,
+            iconAnchor: [19, 38]
+          });
+          const m = L.marker([rec.lat, rec.lng], {icon}).addTo(map);
+          markers.push(m);
+        });
+        if (data.recommendations.length) {
+          const first = data.recommendations[0];
+          map.flyTo([first.lat, first.lng], 8, {duration: 1.5});
+        }
+      } catch (err) {
+        removeTyping();
+        appendBubble('a', 'Had trouble fetching recommendations. Is the server running?', true);
+      }
     }
-
-    appendBubble('a', 'Thanks — I have enough to start surfacing recommendations next.', true);
 
   } catch (err) {
     removeTyping();
@@ -756,6 +790,7 @@ async function selectPriority(priority) {
       const first = data.recommendations[0];
       map.flyTo([first.lat, first.lng], 8, {duration: 1.5});
     }
+
   } catch (err) {
     removeTyping();
     appendBubble('a', 'Had trouble fetching recommendations. Is the server running?', true);

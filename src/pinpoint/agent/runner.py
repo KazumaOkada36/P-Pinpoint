@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Generator, Optional
+from typing import Any, Callable, Optional
 
 import anthropic
 
 from pinpoint.agent.system_prompt import SYSTEM_PROMPT
-
-# --------------------------------------------------------------------------- #
-# Tool schemas exposed to Claude                                               #
-# --------------------------------------------------------------------------- #
 
 TOOLS: list[dict] = [
     {
@@ -44,7 +40,7 @@ TOOLS: list[dict] = [
                     "items": {"type": "string"},
                     "description": (
                         "List of location priorities from: talent, cost_efficiency, gdp_growth, "
-                        "manufacturing, tech_ecosystem, finance, healthcare, logistics, energy"
+                        "manufacturing, tech_ecosystem, finance, healthcare, logistics, energy, startup"
                     ),
                 },
                 "preferred_region": {
@@ -57,7 +53,11 @@ TOOLS: list[dict] = [
     },
     {
         "name": "get_location_recommendations",
-        "description": "Score and rank all US states for a given business profile. Returns top N states with scores and feature breakdown.",
+        "description": (
+            "Score and rank all US states for a given business profile. "
+            "Returns top N states with scores and feature breakdown. "
+            "Call this immediately after parse_business_profile."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -65,6 +65,7 @@ TOOLS: list[dict] = [
                 "priorities": {
                     "type": "array",
                     "items": {"type": "string"},
+                    "description": "Priorities from: talent, cost_efficiency, gdp_growth, manufacturing, tech_ecosystem, finance, healthcare, logistics, energy, startup",
                 },
                 "employee_count": {"type": "integer"},
                 "monthly_rent_budget_usd": {"type": "number"},
@@ -79,10 +80,14 @@ TOOLS: list[dict] = [
     },
 ]
 
-
-# --------------------------------------------------------------------------- #
-# Runner                                                                       #
-# --------------------------------------------------------------------------- #
+# Cached system prompt block — reused across turns to reduce API cost
+_SYSTEM_WITH_CACHE = [
+    {
+        "type": "text",
+        "text": SYSTEM_PROMPT,
+        "cache_control": {"type": "ephemeral"},
+    }
+]
 
 
 class AgentRunner:
@@ -103,7 +108,6 @@ class AgentRunner:
         self._on_thinking = on_thinking or (lambda t: None)
         self._history: list[dict] = []
 
-    # ------------------------------------------------------------------
     def send(self, user_message: str) -> str:
         """Send a user message, run tool loop, return final assistant text."""
         self._history.append({"role": "user", "content": user_message})
@@ -112,26 +116,38 @@ class AgentRunner:
     def reset(self) -> None:
         self._history.clear()
 
-    # ------------------------------------------------------------------
     def _run_loop(self) -> str:
-        """Agentic tool-use loop — keeps calling Claude until no more tool calls."""
         while True:
             self._on_thinking("Thinking")
-            response = self._client.messages.create(
-                model=self._model,
-                max_tokens=4096,
-                system=SYSTEM_PROMPT,
-                tools=TOOLS,
-                messages=self._history,
-            )
+            try:
+                response = self._client.messages.create(
+                    model=self._model,
+                    max_tokens=4096,
+                    system=_SYSTEM_WITH_CACHE,
+                    tools=TOOLS,
+                    messages=self._history,
+                )
+            except anthropic.AuthenticationError:
+                raise RuntimeError(
+                    "Invalid API key. Run `pinpoint setup` to update your Anthropic API key."
+                )
+            except anthropic.RateLimitError:
+                raise RuntimeError(
+                    "Rate limit reached. Wait a moment and try again, or switch to a faster model with /model."
+                )
+            except anthropic.APIConnectionError:
+                raise RuntimeError(
+                    "Could not connect to Anthropic API. Check your internet connection."
+                )
+            except anthropic.BadRequestError as e:
+                raise RuntimeError(f"Bad request: {e}")
+            except anthropic.APIStatusError as e:
+                raise RuntimeError(f"Anthropic API error ({e.status_code}): {e.message}")
 
-            # Collect assistant message content
             assistant_content = response.content
             self._history.append({"role": "assistant", "content": assistant_content})
 
-            # Check stop reason
             if response.stop_reason == "end_turn":
-                # Extract plain text
                 text = " ".join(
                     block.text for block in assistant_content if hasattr(block, "text")
                 )
@@ -139,7 +155,6 @@ class AgentRunner:
                 return text
 
             if response.stop_reason == "tool_use":
-                # Execute all tool calls
                 tool_results = []
                 for block in assistant_content:
                     if block.type == "tool_use":
@@ -164,9 +179,9 @@ class AgentRunner:
                             )
 
                 self._history.append({"role": "user", "content": tool_results})
-                continue  # loop back to call Claude again
+                continue
 
-            # Unexpected stop reason — return whatever text we have
+            # Unexpected stop reason
             text = " ".join(
                 block.text for block in assistant_content if hasattr(block, "text")
             )

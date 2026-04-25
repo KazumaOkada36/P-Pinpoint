@@ -40,14 +40,15 @@ _LOGO = r"""
 # --------------------------------------------------------------------------- #
 
 SLASH_COMMANDS: dict[str, str] = {
-    "/help": "Show command reference",
-    "/model": "Switch the Claude model",
+    "/help":   "Show command reference",
+    "/model":  "Switch the Claude model",
     "/config": "Show active configuration",
-    "/clear": "Clear conversation history",
-    "/train": "Retrain the recommender model",
-    "/import": "Import custom CSV data",
-    "/top": "Change number of recommendations returned",
-    "/exit": "Exit pinpoint",
+    "/clear":  "Clear conversation history",
+    "/train":  "Retrain the recommender model",
+    "/import": "Import custom CSV data  (/import path/to/data.csv)",
+    "/top":    "Change number of results  (/top 10)",
+    "/save":   "Save last response to a file  (/save results.txt)",
+    "/exit":   "Exit pinpoint",
 }
 
 # Placeholder suggestions shown in the prompt
@@ -134,6 +135,7 @@ class InteractiveTerminal:
         self._status = ThinkingStatus(self._console)
         self._runner: Optional[object] = None  # AgentRunner, created lazily
         self._ctrl_c_count = 0
+        self._last_reply: str = ""
 
     # ------------------------------------------------------------------
     def run(self) -> None:
@@ -189,18 +191,29 @@ class InteractiveTerminal:
     # ------------------------------------------------------------------
     def _chat(self, message: str) -> None:
         if not self._runner:
-            self._console.print("[red]No API key configured. Run `pinpoint setup`.[/red]")
+            self._console.print(
+                Panel(
+                    "[yellow]No API key configured.[/yellow]\n"
+                    "Run [cyan]pinpoint setup[/cyan] to add your Anthropic API key.",
+                    border_style="yellow",
+                )
+            )
             return
 
         self._status.start("Thinking")
         try:
             reply = self._runner.send(message)
+        except RuntimeError as e:
+            self._status.stop()
+            self._console.print(f"\n[red]Error:[/red] {e}\n")
+            return
         except Exception as e:
             self._status.stop()
-            self._console.print(f"[red]Error:[/red] {e}")
+            self._console.print(f"\n[red]Unexpected error:[/red] {e}\n")
             return
         self._status.stop()
 
+        self._last_reply = reply
         self._console.print()
         self._console.print(Markdown(reply))
         self._console.print()
@@ -235,6 +248,8 @@ class InteractiveTerminal:
                 self._console.print(f"[green]Top-N set to {self._config.top_n}[/green]")
             else:
                 self._console.print("[yellow]Usage:[/yellow] /top <number>")
+        elif command == "/save":
+            self._save_reply(arg.strip() or "pinpoint_results.txt")
         elif command == "/exit":
             self._console.print("[dim]Goodbye.[/dim]")
             sys.exit(0)
@@ -346,6 +361,15 @@ class InteractiveTerminal:
         shutil.copy2(src, dest)
         self._console.print(f"[green]OK Imported {src.name} → {dest}[/green]")
         self._console.print("[dim]Run /train to apply the new data.[/dim]")
+
+    def _save_reply(self, filename: str) -> None:
+        if not self._last_reply:
+            self._console.print("[yellow]Nothing to save yet — ask a question first.[/yellow]")
+            return
+        from pathlib import Path
+        path = Path(filename)
+        path.write_text(self._last_reply)
+        self._console.print(f"[green]Saved to {path.resolve()}[/green]")
 
     # ------------------------------------------------------------------
     def _toolbar(self) -> HTML:
