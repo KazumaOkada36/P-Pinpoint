@@ -10,6 +10,7 @@ Supports:
   - Nationwide:            None or ""
 """
 
+import re
 from functools import lru_cache
 
 # ── State name / abbreviation lookup ─────────────────────────────────────────
@@ -36,7 +37,7 @@ ALL_STATE_ABBRS = set(STATE_NAME_TO_ABBR.values())
 # Order matters — more specific entries should come first.
 REGION_DEFINITIONS: list[tuple[list[str], set[str]]] = [
     # California metros (single state, but allow county-level drill-down)
-    (["southern california", "socal", "so cal", "la", "los angeles", "san diego", "orange county"],
+    (["southern california", "socal", "so cal", "los angeles", "san diego", "orange county"],
      {"CA"}),
     (["bay area", "silicon valley", "san francisco", "sf bay"],
      {"CA"}),
@@ -95,6 +96,10 @@ REGION_DEFINITIONS: list[tuple[list[str], set[str]]] = [
     (["seattle", "portland", "pacific northwest", "pnw"],
      {"WA", "OR"}),
 
+    # Northeast region
+    (["northeast", "new england states", "mid-atlantic"],
+     {"ME", "NH", "VT", "MA", "RI", "CT", "NY", "NJ", "PA", "DE", "MD", "DC"}),
+
     # Broad coast / national regions
     (["west coast"],
      {"CA", "OR", "WA"}),
@@ -102,8 +107,14 @@ REGION_DEFINITIONS: list[tuple[list[str], set[str]]] = [
      {"ME", "NH", "VT", "MA", "RI", "CT", "NY", "NJ", "PA", "DE", "MD", "DC", "VA", "NC", "SC", "GA", "FL"}),
     (["sun belt"],
      {"FL", "GA", "AL", "MS", "LA", "TX", "AZ", "NV", "CA"}),
-    (["great plains"],
+    (["great plains", "plains states"],
      {"ND", "SD", "NE", "KS", "OK", "TX"}),
+    (["appalachia"],
+     {"WV", "KY", "TN", "VA", "NC", "OH", "PA"}),
+    (["gulf coast"],
+     {"FL", "AL", "MS", "LA", "TX"}),
+    (["four corners"],
+     {"CO", "UT", "AZ", "NM"}),
 ]
 
 
@@ -126,9 +137,9 @@ def resolve_region(region_str: str | None) -> set[str] | None:
     if r in STATE_NAME_TO_ABBR:
         return {STATE_NAME_TO_ABBR[r]}
 
-    # Metro / region keyword match
+    # Metro / region keyword match (word-boundary aware)
     for keywords, states in REGION_DEFINITIONS:
-        if any(kw in r for kw in keywords):
+        if any(re.search(r'(?<!\w)' + re.escape(kw) + r'(?!\w)', r) for kw in keywords):
             return states
 
     # Partial state name match

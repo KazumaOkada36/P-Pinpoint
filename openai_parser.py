@@ -5,7 +5,13 @@ from dotenv import load_dotenv
 
 load_dotenv("secrets.env")
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _client
 
 SCHEMA = {
     "type": "object",
@@ -44,7 +50,7 @@ SCHEMA = {
 
 def parse_business_message(message: str):
     try:
-        response = client.responses.create(
+        response = _get_client().responses.create(
             model="gpt-4o",
             input=[
                 {
