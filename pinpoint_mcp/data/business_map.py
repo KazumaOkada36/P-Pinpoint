@@ -243,16 +243,38 @@ PRIORITY_WEIGHTS: dict[str, dict[str, float]] = {
         "talent_supply":      0.12,
         "tax_climate":        0.02,
     },
+    "talent access": {
+        "industry_health":    0.18,
+        "growth":             0.15,
+        "market_size":        0.10,
+        "complementary":      0.10,
+        "stability":          0.05,
+        "competitive_density": 0.06,
+        "talent_supply":      0.34,
+        "tax_climate":        0.02,
+    },
+    "tax efficiency": {
+        "industry_health":    0.18,
+        "growth":             0.15,
+        "market_size":        0.10,
+        "complementary":      0.08,
+        "stability":          0.12,
+        "competitive_density": 0.08,
+        "talent_supply":      0.05,
+        "tax_climate":        0.24,
+    },
 }
 
 # Keyword normalization for priority matching
 PRIORITY_KEYWORDS = {
-    "foot traffic":               ["foot traffic", "traffic", "busy", "people", "pedestrian", "walk"],
-    "affordable rent":            ["affordable", "cheap", "low cost", "rent", "budget", "inexpensive"],
-    "growth potential":           ["growth", "growing", "expanding", "emerging", "upside", "future"],
-    "low competition":            ["competition", "competitive", "less competition", "untapped", "underserved"],
+    "foot traffic":               ["foot traffic", "traffic", "busy", "people", "pedestrian", "walk", "footfall"],
+    "affordable rent":            ["affordable", "cheap", "low cost", "rent", "budget", "inexpensive", "low rent"],
+    "growth potential":           ["growth", "growing", "expanding", "emerging", "upside", "future", "growth potential"],
+    "low competition":            ["competition", "competitive", "less competition", "untapped", "underserved", "low competition"],
     "stability":                  ["stable", "stability", "safe", "established", "reliable", "consistent"],
     "target customer proximity":  ["customer", "demographic", "target", "proximity", "audience", "clientele"],
+    "talent access":              ["talent", "workforce", "hiring", "hire", "employees", "staff", "engineers", "skilled", "labor pool", "talent access", "talent pool"],
+    "tax efficiency":             ["tax", "taxes", "corporate tax", "tax rate", "tax climate", "tax burden"],
 }
 
 
@@ -265,12 +287,15 @@ def normalize_business_type(raw: str) -> str:
     return "cafe"
 
 
-def normalize_priority(raw: str) -> str:
+def normalize_priority(raw: str) -> str | None:
     raw_lower = raw.lower().strip()
+    # Exact key match first
+    if raw_lower in PRIORITY_WEIGHTS:
+        return raw_lower
     for key, keywords in PRIORITY_KEYWORDS.items():
         if any(kw in raw_lower for kw in keywords):
             return key
-    return "default"
+    return None
 
 
 def get_weights(priorities: list[str]) -> dict[str, float]:
@@ -278,8 +303,8 @@ def get_weights(priorities: list[str]) -> dict[str, float]:
     if not priorities:
         return PRIORITY_WEIGHTS["default"]
 
-    normalized = [normalize_priority(p) for p in priorities]
-    valid = [p for p in normalized if p in PRIORITY_WEIGHTS]
+    valid = [normalize_priority(p) for p in priorities]
+    valid = [p for p in valid if p is not None and p in PRIORITY_WEIGHTS and p != "default"]
     if not valid:
         return PRIORITY_WEIGHTS["default"]
 
